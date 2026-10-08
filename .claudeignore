@@ -1,0 +1,31 @@
+# Entornos virtuales y dependencias instaladas
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Cachés de Python y herramientas
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Artefactos del sistema operativo / empaquetado
+.DS_Store
+__MACOSX/
+Thumbs.db
+*.zip
+
+# Configuración local de editores
+.vscode/
+.idea/
+
+# Material del curso (documentos Word, no es código)
+*.docx
+
+# Plantilla original: la bitácora real vive en docs/bitacora.md
+BITACORA_TEMPLATE.md
