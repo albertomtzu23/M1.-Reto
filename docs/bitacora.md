@@ -93,7 +93,7 @@ Found 20 errors.
 | # | Tipo | Cambio realizado | Tests | Ruff |
 |---|---|---|---|---|
 | 1 | Eliminar código muerto | Se quitaron 2 funciones sin uso, 1 bloque comentado, 1 import sin usar y 4 declaraciones de encoding | 20/20 ✅ | 20 → 13 |
-| 2 | | | | |
+| 2 | Constantes con nombre | 9 constantes de negocio en `gestor.py`; 17 literales reemplazados en `gestor.py` y `reportes.py` | 20/20 ✅ | 13 → 13 |
 | 3 | | | | |
 | 4 | | | | |
 | 5 | | | | |
@@ -204,6 +204,116 @@ desaparecen) convierte la validación en una comprobación objetiva: si el núme
 no cuadra, sé que la IA tocó algo de más o de menos. Advertir explícitamente que
 `hayArchivo` **no** es código muerto evitó un falso positivo probable (es una
 función trivial que parece sobrar).
+
+### Refactorización 2 · Reemplazar números mágicos por constantes
+
+**Cómo se diseñó el prompt.** Pedí a la IA ayuda para armarlo
+(`¿Quieres que te ayude a armar el prompt igual que con este? Si`). Respecto al
+prompt 1 se agregaron tres técnicas: (a) **dar los nombres de las constantes**
+en lugar de dejar que la IA los invente; (b) **advertir una trampa técnica**
+(reordenar aritmética con floats puede cambiar el redondeo); (c) un **resultado
+esperado de "sin cambio"** en ruff más una verificación propia (búsqueda de
+literales), porque el linter no detecta este *code smell*. Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Refactorización 2 — Reemplazar números mágicos por constantes con nombre.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 20 tests pasando y 13 errores de ruff.
+
+Objetivo: que cada regla de negocio tenga un nombre y viva en un solo lugar,
+SIN cambiar el comportamiento ni la estructura del código.
+
+Alcance (solo esto):
+1. Al inicio de gestor.py, después de los imports, crea una sección
+   "Reglas de negocio" con estas constantes:
+   TASA_IVA = 0.16
+   UMBRAL_DESCUENTO_ALTO = 1000
+   TASA_DESCUENTO_ALTO = 0.10
+   UMBRAL_DESCUENTO_MEDIO = 500
+   TASA_DESCUENTO_MEDIO = 0.05
+   PREFIJO_VIP = "VIP"
+   MONTO_MINIMO_VIP = 200
+   TASA_DESCUENTO_VIP = 0.02
+   STOCK_MINIMO = 5
+2. Sustituye los valores literales por las constantes en
+   `registrar_venta` y `cotizar` (gestor.py).
+   En la regla VIP, el 3 de `len(cliente) >= 3` y de `cliente[0:3]`
+   sale del largo del prefijo: usa `len(PREFIJO_VIP)`.
+3. En reportes.py usa `gestor.STOCK_MINIMO` en lugar del 5
+   (en `productos_stock_bajo` y en `reporte_inventario`).
+
+Restricciones:
+- Solo cambia literales por nombres. No reestructures condicionales,
+  no extraigas funciones y no renombres variables: eso va en otras
+  refactorizaciones.
+- No reordenes operaciones aritméticas (por ejemplo, NO conviertas
+  `base + base * 0.16` en `base * (1 + TASA_IVA)`): con floats
+  el redondeo podría cambiar.
+- No toques el `n=3` de `mas_vendidos` (es un parámetro, no una regla).
+- No modifiques tests/ ni pyproject.toml.
+
+Validación:
+- Ejecuta los tests y `ruff check src`.
+- Resultado esperado: 20 tests pasando y 13 errores de ruff (sin cambio:
+  ruff no detecta números mágicos con la configuración del proyecto).
+- Verificación adicional: busca en src/ los literales 0.16, 0.10, 0.05,
+  0.02, 1000, 500, 200 y "VIP", y el `< 5`. Fuera de la definición de
+  las constantes no debe quedar ninguno.
+
+Al terminar:
+1. Muéstrame el diff.
+2. Registra la entrada #2 en docs/bitacora.md: este prompt tal cual,
+   el cambio realizado, la justificación y el resultado de tests y ruff.
+3. Haz un commit `refactor: reemplaza números mágicos por constantes con nombre`
+   y súbelo a GitHub.
+```
+
+**Cambio realizado** (2 archivos):
+
+| Archivo | Cambio |
+|---|---|
+| `src/gestor.py` | Nueva sección *Reglas de negocio* con 9 constantes. 15 literales reemplazados en `registrar_venta` (umbrales y tasas de descuento, regla VIP, IVA) y `cotizar` (umbrales, tasas, IVA). |
+| `src/reportes.py` | `< 5` → `< gestor.STOCK_MINIMO` en `productos_stock_bajo` y `reporte_inventario`. |
+
+**Justificación.**
+- Cada regla de negocio ahora tiene **nombre** (`TASA_IVA` dice qué es; `0.16` no) y
+  un **único lugar**: si cambia el IVA o el umbral de descuento se edita una línea,
+  no cinco repartidas en dos funciones y dos archivos.
+- Hace visible la duplicación entre `registrar_venta` y `cotizar` (mismas
+  constantes, misma lógica), que se atacará en la extracción de funciones.
+- `STOCK_MINIMO` estaba repetido en dos funciones de `reportes.py`: ahora el
+  reporte y la alerta no pueden desincronizarse.
+
+**Resultado.**
+
+| | Antes | Después |
+|---|---|---|
+| Tests | 20 passed | **20 passed** |
+| `ruff check src` | 13 errores | **13 errores** (esperado: ruff no mide números mágicos) |
+| Literales de negocio fuera de las constantes | 17 | **0** |
+
+**Verificación extra de equivalencia (iniciativa de la IA).** Los tests no
+prueban los umbrales exactos (500, 1000, el monto VIP de 200) ni clientes como
+`"VI"`, `"vip1"` o `None`. La IA comparó la versión anterior contra la nueva
+ejecutando ambas con 926 combinaciones (11 precios × 6 cantidades × 7 clientes,
+`cotizar` + `registrar_venta`, más stock 0/4/5/6 en reportes):
+**0 diferencias**.
+
+**Tropiezo.** Al aplicar el cambio en `reportes.py`, el primer reemplazo
+automático que usó la IA (`["stock"] < 5`) coincidía con las dos líneas a la
+vez; su propio chequeo (`assert` de "exactamente una coincidencia") lo detuvo
+antes de escribir el archivo y lo corrigió. Lección: pedir cambios que
+verifiquen cuántas veces aplican evita reemplazos de más.
+
+**Hallazgo para después.** Al revisar `gestor.py` se vio que la constante
+global `MODO_DEBUG = False` no se usa en ningún lado: es código muerto que el
+prompt 1 no incluyó porque su alcance era una lista cerrada. Queda anotado para
+la refactorización de nombres/estado global. Aprendizaje: un alcance cerrado
+evita cambios de más, pero conviene pedir también "reporta otros casos que
+encuentres, sin tocarlos".
 
 ---
 
