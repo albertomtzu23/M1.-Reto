@@ -98,6 +98,7 @@ Found 20 errors.
 | 4 | Simplificar condicionales | Cláusulas de guarda en `_validar_venta` y `calcular_descuento_vip`; `hayArchivo` regresa la condición | 20/20 ✅ | 11 → 7 |
 | 5 | Renombrar | Nombres descriptivos en snake_case en los 4 módulos; `MODO_DEBUG` eliminado; comentarios → docstrings; imports ordenados | 20/20 ✅ | 7 → 4 |
 | 6 | Manejo de errores | `with open` en lectura y escritura; `except Exception` → `except (ValueError, RecursionError)` | 20/20 ✅ | 4 → 1 |
+| C1 | Corrección de bug (cambio intencional) | `cargar_datos` valida la estructura antes de modificar el estado; 5 pruebas nuevas en `tests/test_casos_limite.py` | 25/25 ✅ | 1 → 1 |
 
 ---
 
@@ -837,9 +838,8 @@ con un comentario que explica qué cubre cada una.
    `[]`), `cargar_datos` **primero vacía el inventario y después truena**
    (`KeyError` / `TypeError`). El inventario que había en memoria se pierde. Es
    un bug del código original que se conserva idéntico.
-   *Decisión pendiente:* corregirlo en un cambio aparte, documentado como
-   cambio de comportamiento intencional (validar la estructura antes de
-   vaciar y regresar `False` con un mensaje).
+   ✅ **Resuelto** en la *Corrección 1* (siguiente sección), por decisión mía
+   después de que la IA lo reportara.
 2. **Diferencia deliberada (no observable en la práctica).** El `open` ahora
    está dentro del `try`, pero los errores del sistema operativo (`OSError`:
    permisos, directorio) siguen sin atraparse, igual que antes. La única
@@ -854,6 +854,71 @@ diseñarlo. Un prompt detallado no garantiza que esté completo; pedirle a la IA
 que **investigue** antes de actuar cubre lo que el prompt no anticipó. También
 se vio el valor de la regla 5 de `CLAUDE.md`: la IA encontró un bug real y lo
 reportó en lugar de "arreglarlo" silenciosamente dentro de una refactorización.
+
+---
+
+### Corrección 1 · Bug de pérdida de datos al cargar un JSON mal estructurado *(cambio de comportamiento intencional)*
+
+> Esta entrada **no es una refactorización**: cambia el comportamiento a
+> propósito para corregir un bug. Se hizo en un commit separado (`fix:`) para
+> que no se mezcle con las refactorizaciones, que por definición no deben
+> cambiar el comportamiento.
+
+**Origen.** La IA lo encontró al probar entradas hostiles en la
+refactorización 6 y, siguiendo la regla 5 de `CLAUDE.md`, lo reportó y
+preguntó en vez de corregirlo. Me ofreció dos opciones (corregirlo aparte o
+dejarlo documentado).
+
+**Prompt usado (tal cual):**
+
+```text
+corrigelo y documentalo
+```
+
+Un prompt muy corto funcionó porque el contexto ya estaba completo: el
+hallazgo estaba descrito en la bitácora con causa, síntoma y propuesta de
+solución, y `CLAUDE.md` ya decía dónde van las pruebas nuevas.
+
+**El bug.** `cargar_datos` vaciaba el estado **antes** de comprobar que el
+JSON tuviera la forma correcta:
+
+| Archivo (JSON válido) | Antes | Después |
+|---|---|---|
+| `{"ventas": []}` (sin "inventario") | Vacía el inventario y truena con `KeyError` → **datos perdidos** | `False`, "formato de datos invalido", estado intacto |
+| `{"inventario": {...}}` (sin "ventas") | Reemplaza el inventario, truena con `KeyError` → **estado a medias** (inventario nuevo + ventas viejas) | `False`, estado intacto |
+| `[]` | Truena con `TypeError` (estado intacto por casualidad) | `False`, estado intacto |
+| `{"inventario": [], "ventas": []}` | Lo acepta como inventario vacío y **borra** lo que había | `False` (guardar_datos nunca escribe una lista) |
+
+**Cambio realizado.**
+- `src/almacen.py`: nueva función `_estructura_valida(datos)` que comprueba
+  `{"inventario": dict, "ventas": list}`; `cargar_datos` la llama **antes** de
+  tocar el estado y, si falla, regresa `False` con `ultimo_error =
+  "formato de datos invalido"`. Docstring actualizado.
+- `tests/test_casos_limite.py` (**archivo nuevo**; las pruebas originales no se
+  tocaron): 5 pruebas: 3 del bug (sin "inventario", sin "ventas", lista), 1 de
+  que un JSON roto se sigue reportando como "archivo corrupto" y 1 de que
+  "contador" sigue siendo opcional.
+- `CLAUDE.md` (**primera iteración del archivo**): se agregó la regla de
+  negocio "`cargar_datos` no modifica el estado si…" y se aclaró que las
+  pruebas nuevas van en `tests/test_casos_limite.py` y que cada bug corregido
+  lleva una prueba que falle con el código anterior.
+
+**Verificación.**
+
+| Comprobación | Resultado |
+|---|---|
+| Suite completa | **25 passed** (20 originales + 5 nuevas) |
+| Pruebas nuevas contra el código **anterior** | **3 fallan** (las del bug) → la prueba sí detecta el bug |
+| `ruff check src` | **1 error** (sin cambio; C901 de `menu`) |
+| Persistencia (17 escenarios) | **4 diferencias, todas intencionales** (las 4 filas de la tabla); los otros 13 idénticos |
+| Ventas (926), errores (53), reportes/JSON (23) | **0 diferencias** |
+
+**Qué aprendí.** Separar "refactorizar" de "corregir" no es burocracia: si
+este arreglo hubiera ido dentro de la refactorización 6, el commit diría
+"sin cambio de comportamiento" y sería falso. También vi que una regla en
+`CLAUDE.md` ("reporta y pregunta") convirtió a la IA de un asistente que
+"arregla lo que ve" en uno que me deja decidir, y que una prueba de regresión
+solo vale si se demuestra que falla con el código viejo.
 
 ---
 

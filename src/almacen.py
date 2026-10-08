@@ -17,10 +17,20 @@ def guardar_datos(ruta):
     return True
 
 
+def _estructura_valida(datos):
+    """Indica si el JSON leído tiene la forma que guarda `guardar_datos`."""
+    return (
+        isinstance(datos, dict)
+        and isinstance(datos.get("inventario"), dict)
+        and isinstance(datos.get("ventas"), list)
+    )
+
+
 def cargar_datos(ruta):
     """Lee el archivo JSON y deja los datos en el estado global.
 
-    Regresa False si el archivo no existe o esta corrupto.
+    Regresa False si el archivo no existe, está corrupto o no tiene la
+    estructura esperada; en esos casos el estado actual no se modifica.
     """
     if not os.path.exists(ruta):
         gestor.ultimo_error = "el archivo no existe"
@@ -33,6 +43,9 @@ def cargar_datos(ruta):
         # (bytes que no son UTF-8) y enteros con demasiados dígitos;
         # RecursionError, un anidamiento excesivo.
         gestor.ultimo_error = "archivo corrupto"
+        return False
+    if not _estructura_valida(datos):
+        gestor.ultimo_error = "formato de datos invalido"
         return False
     gestor.INVENTARIO.clear()
     for codigo in datos["inventario"]:

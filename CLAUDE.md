@@ -34,10 +34,11 @@ reporta el resultado. No encadenes dos refactorizaciones sin validar en medio.
 
 ## Reglas que NO se negocian
 
-1. **No modificar** nada dentro de `tests/` ni `pyproject.toml`. Si un test
-   falla, el error está en `src/`, nunca en el test.
-   Sí se permite **agregar** archivos de prueba nuevos (p. ej.
-   `tests/test_casos_limite.py`) sin tocar los existentes.
+1. **No modificar** las pruebas originales de `tests/` ni `pyproject.toml`.
+   Si un test falla, el error está en `src/`, nunca en el test.
+   Las pruebas nuevas van en `tests/test_casos_limite.py` (archivo agregado
+   durante el reto); cada bug corregido lleva una prueba que falle con el
+   código anterior.
 2. **API pública congelada** (la usan los tests o `main.py`):
    - `gestor.INVENTARIO`, `gestor.VENTAS`, `gestor.ultimo_error`
    - `gestor.agregarProducto`, `gestor.buscarProducto` (conservan su nombre
@@ -66,6 +67,11 @@ reporta el resultado. No encadenes dos refactorizaciones sin validar en medio.
 - Stock bajo: `stock < 5`.
 - `cotizar` no valida stock; `registrar_venta` sí.
 - El folio (`contador`) continúa después de guardar y recargar.
+- `cargar_datos` **no modifica el estado** si el archivo no existe, está
+  corrupto (`"archivo corrupto"`) o no tiene la estructura
+  `{"inventario": dict, "ventas": list}` (`"formato de datos invalido"`).
+  *(Regla agregada durante el reto al corregir un bug: antes vaciaba el
+  inventario y luego tronaba.)*
 - El orden de las validaciones define qué mensaje queda en `ultimo_error`.
   En `registrar_venta`: código vacío → producto no existe → cantidad inválida →
   stock insuficiente. En `cotizar`: producto no existe → cantidad inválida
