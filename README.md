@@ -1,5 +1,7 @@
 # Gestor de inventario y ventas — Tienda "La Esquina"
 
+[![CI](https://github.com/albertomtzu23/M1.-Reto/actions/workflows/ci.yml/badge.svg?branch=refactorizacion)](https://github.com/albertomtzu23/M1.-Reto/actions/workflows/ci.yml)
+
 Aplicación de consola en Python para administrar el inventario y las ventas de
 una tienda pequeña. Permite:
 
@@ -25,6 +27,10 @@ y las conclusiones en [`docs/reflexion.md`](docs/reflexion.md).
 | Errores de `mypy --strict src` | 58 | **0** |
 | Pruebas | 20 | **62** (las 20 originales sin modificar + 42 nuevas) |
 | Prueba de mutación: errores introducidos a propósito que la suite detecta | 0 / 10 | **10 / 10** |
+
+Las pruebas, el linter y mypy se ejecutan automáticamente en **GitHub Actions**
+con Python 3.10 y 3.12 en cada push y en cada Pull Request. La evidencia está en
+[`docs/evidencia.md`](docs/evidencia.md).
 
 ## Requisitos previos
 
@@ -93,6 +99,7 @@ python src/main.py
 
 ```
 .
+├── .github/workflows/ci.yml  # Integración continua: pytest, ruff y mypy (Python 3.10 y 3.12)
 ├── CLAUDE.md                 # Instrucciones para Claude: reglas, convenciones, comandos
 ├── .claudeignore             # Archivos que la IA no debe leer
 ├── README.md
@@ -113,6 +120,7 @@ python src/main.py
 │   └── test_casos_limite.py  # Nuevo: fronteras, validaciones y bug corregido
 └── docs/
     ├── bitacora.md           # Cada paso: prompt, cambio, justificación y resultados
+    ├── evidencia.md          # Resultados de pytest, ruff y mypy en GitHub Actions
     └── reflexion.md          # Aprendizajes y conclusiones
 ```
 

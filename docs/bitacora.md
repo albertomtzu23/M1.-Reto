@@ -1443,6 +1443,54 @@ enunciado original del reto, y solo ejecutarlo lo reveló.
 
 ---
 
+### Evidencia · Integración continua con GitHub Actions
+
+**Cómo se llegó aquí.** La IA me pidió correr `pytest` y `ruff` en mi equipo
+para la evidencia oficial. Al hacerlo, mi Windows respondió:
+
+```text
+C:\Users\Triple E>python -m venv .venv
+no se encontró Python; ejecutar sin argumentos para instalar desde el Microsoft Store ...
+```
+
+(además, faltó el `cd` a la carpeta del repositorio). La IA explicó la causa y
+me ofreció opciones; elegí **"GitHub Actions (Recomendado)"** en lugar de
+instalar Python. La IA también intentó correr `pytest` real en el entorno de
+mi computadora al que tiene acceso, pero ahí también está bloqueado PyPI.
+
+**Cambio realizado.** `.github/workflows/ci.yml`: en cada push y Pull Request
+instala `requirements.txt` y corre `pytest -v`, `ruff check src` y
+`mypy --strict src` con **Python 3.10 y 3.12**.
+
+**Iteraciones del workflow (3 commits `ci:`).**
+1. Primera versión: los dos jobs en verde, pero la IA **no pudo leer el log**
+   (GitHub lo sirve desde una URL firmada demasiado larga para sus
+   herramientas), así que solo podía afirmar "success", no "62 passed".
+2. Cada paso publica su última línea como **anotación** (`::notice::`) y en el
+   resumen del job: así el resultado exacto es legible por la API y visible en
+   la página del run.
+3. GitHub advirtió que `checkout@v4` y `setup-python@v5` usan Node 20
+   (obsoleto); se actualizaron a `@v6` (verificando antes que las etiquetas
+   existen) y la advertencia desapareció.
+
+**Resultado** ([run](https://github.com/albertomtzu23/M1.-Reto/actions/runs/37721048038)):
+
+| Verificación | Python 3.10 | Python 3.12 |
+|---|---|---|
+| `pytest -v` | ✅ **62 passed** | ✅ **62 passed** |
+| `ruff check src` | ✅ All checks passed! | ✅ All checks passed! |
+| `mypy --strict src` | ✅ Success | ✅ Success |
+
+Detalle en [`docs/evidencia.md`](evidencia.md).
+
+**Qué aprendí.** "No tengo Python" no tenía que frenar la entrega: la
+integración continua da evidencia más fuerte que una corrida local (entorno
+limpio, dos versiones de Python, repetible en cada cambio y visible en el PR).
+Y que la IA no pudiera leer el log me obligó a que la evidencia quedara
+publicada de forma explícita, no solo como un check verde.
+
+---
+
 ## Intentos fallidos y ajustes
 
 *(Se registran aquí los prompts que no dieron el resultado esperado y cómo se corrigieron.)*
@@ -1450,11 +1498,23 @@ enunciado original del reto, y solo ejecutarlo lo reveló.
 | Situación | Qué pasó | Cómo se resolvió |
 |---|---|---|
 | Clonar el repo desde la carpeta local | El shell de mi equipo usado por la IA no tiene salida a GitHub (proxy 403); quedó una carpeta `M1.-Reto/` vacía con un `.git` incompleto en `D:\2026\Curso IA\Modulo 1. Fundamentos Base`. | Se clonó en el espacio de trabajo de la nube y después se copió el repositorio completo (con su historial) a esa carpeta; los archivos temporales de git requirieron autorizar borrado en la carpeta. |
-| Instalar `pytest` en la nube | La política de red bloquea PyPI. | Ejecutor de pruebas equivalente para validar cada paso; `pytest` real en mi equipo para la evidencia final. |
+| Instalar `pytest` en la nube | La política de red bloquea PyPI. | Ejecutor de pruebas equivalente para validar cada paso; evidencia final con `pytest` real en GitHub Actions. |
+| Correr `pytest` en mi equipo | Windows sin Python instalado (`python` abre la Microsoft Store); el entorno de mi computadora al que accede la IA también bloquea PyPI. | Integración continua con GitHub Actions (Python 3.10 y 3.12). |
+| Leer el log de GitHub Actions | La IA no pudo descargar el log (URL firmada demasiado larga). | El workflow publica el resultado de cada paso como anotación del run. |
 | Push a GitHub | Primero la cuenta de GitHub no estaba vinculada; después de vincularla, el push seguía con 403 porque faltaba instalar la app de Claude para GitHub con acceso al repositorio. | Instalé la app de Claude en mi cuenta con acceso a `M1.-Reto`; el push de `main` y `refactorizacion` funcionó. |
 
 ---
 
 ## Evidencia
 
-*(pendiente: salida final de `pytest` y `ruff check src`)*
+Pruebas y linter ejecutados con herramientas reales en GitHub Actions
+([run](https://github.com/albertomtzu23/M1.-Reto/actions/runs/37721048038)):
+
+```text
+pytest (Python 3.10): 62 passed      pytest (Python 3.12): 62 passed
+ruff   (Python 3.10): All checks passed!   ruff (Python 3.12): All checks passed!
+mypy   (Python 3.10): Success: no issues found in 4 source files
+mypy   (Python 3.12): Success: no issues found in 4 source files
+```
+
+Detalle completo en [`docs/evidencia.md`](evidencia.md).
