@@ -1,0 +1,34 @@
+# Integración continua: valida cada push y cada Pull Request.
+# Es la evidencia de que las pruebas y el linter pasan con pytest y ruff reales.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Pruebas (pytest)
+        run: pytest -v
+
+      - name: Linter (ruff)
+        run: ruff check src
+
+      - name: Tipos (mypy --strict, verificación adicional)
+        run: |
+          pip install mypy
+          mypy --strict src
