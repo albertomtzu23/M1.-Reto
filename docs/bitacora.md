@@ -1346,6 +1346,103 @@ hallazgos y tropiezos).
 
 ---
 
+### README · Instalación, comandos y resumen del reto
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo. Como es documentación,
+el riesgo no es romper el comportamiento sino escribir comandos o cifras que no
+coincidan con la realidad, así que la restricción clave fue **"verifica cada
+comando y cada ruta antes de escribirlos"**. Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+README — Actualizar README.md para la entrega del reto.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+El README actual es el enunciado original del reto; el formato de
+entrega pide que el PR incluya un README con instrucciones del proyecto.
+
+Objetivo: que alguien que clone el repositorio pueda instalarlo,
+probarlo y entender qué se hizo, sin leer la bitácora completa.
+
+Contenido (en este orden):
+1. Título y descripción breve de la aplicación (qué hace la tienda
+   "La Esquina") y una línea de qué es este repositorio (reto de
+   refactorización asistida por IA).
+2. Estado del código: tabla antes/después (ruff 20→0, mypy --strict
+   58→0, pruebas 20→62, prueba de mutación 0/10→10/10).
+3. Requisitos previos: Python 3.10+, git; dependencias de requirements.txt.
+4. Instalación paso a paso: clonar
+   https://github.com/albertomtzu23/M1.-Reto.git, cambiar a la rama
+   `refactorizacion`, crear y activar entorno virtual (comandos para
+   Windows y para Linux/macOS), instalar dependencias.
+5. Comandos: ejecutar pruebas (`pytest`), linter (`ruff check src`),
+   verificación de tipos opcional (`mypy --strict src`, aclarando que
+   mypy no está en requirements.txt y se instala aparte) y la app
+   (`cd src && python main.py`, avisando que la opción 8 sobrescribe
+   datos_ejemplo.json).
+6. Estructura del proyecto actualizada (incluye CLAUDE.md, .claudeignore,
+   docs/bitacora.md, docs/reflexion.md, tests/test_casos_limite.py).
+7. Resumen numerado de las refactorizaciones (8 + la corrección del bug
+   + las pruebas nuevas), una línea cada una, con enlace a la bitácora.
+8. Sección breve "Sobre el reto" con las reglas originales que siguen
+   vigentes (no modificar tests originales ni pyproject.toml).
+
+Restricciones:
+- Todos los números y comandos deben coincidir con la bitácora y con lo
+  que realmente existe en el repositorio; verifica cada comando y cada
+  ruta antes de escribirlos.
+- No inventes funcionalidades ni resultados.
+- No toques src/, tests/ ni pyproject.toml.
+- BITACORA_TEMPLATE.md se queda (es material original del reto).
+
+Al terminar:
+1. Muéstrame el README.
+2. Registra la entrada en docs/bitacora.md: este prompt tal cual y qué
+   se cambió.
+3. Haz un commit `docs: README con instalación, comandos y resumen del reto`
+   y súbelo a GitHub.
+```
+
+**Hallazgo: el propio prompt traía un comando incorrecto, y la restricción de
+verificar lo detectó.** El prompt pedía documentar `cd src && python main.py`
+(el comando del README original). Al ejecutarlo, la IA comprobó que **no carga
+los datos de ejemplo**: el programa busca `datos_ejemplo.json` en la carpeta
+desde donde se ejecuta.
+
+| Comando | ¿Carga los 6 productos de ejemplo? | ¿Qué escribe la opción 8? |
+|---|---|---|
+| `cd src && python main.py` | **No**, arranca vacío | Crea un archivo **nuevo** `src/datos_ejemplo.json` |
+| `python src/main.py` (desde la raíz) | **Sí** | **Sobrescribe** `datos_ejemplo.json` de la raíz |
+
+Se documentó `python src/main.py` con la advertencia y cómo restaurar
+(`git checkout datos_ejemplo.json`). El código **no** se cambió (fuera de
+alcance); queda como posible mejora resolver la ruta relativa al archivo
+`main.py` en lugar del directorio actual.
+
+**Cambio realizado.**
+- `README.md` reescrito: descripción, tabla de estado (ruff 20→0, mypy
+  58→0, pruebas 20→62, mutación 0/10→10/10), requisitos, instalación con
+  activación del entorno para CMD, PowerShell y Linux/macOS, comandos,
+  ejecución de la app con advertencias, estructura del proyecto, resumen de
+  los 8 pasos más la corrección y las pruebas, y reglas del reto.
+- `CLAUDE.md` (**segunda iteración**): tenía el mismo comando incorrecto
+  de la app; se cambió a `python src/main.py`, indicando que la opción 8
+  sobrescribe el archivo.
+
+**Verificación.** Las 17 rutas citadas en el README existen; `pytest`
+(62 passed), `ruff check src` (All checks passed!), `mypy --strict src`
+(Success) y `python src/main.py` (muestra "Datos cargados de
+datos_ejemplo.json") se ejecutaron con el resultado documentado.
+Los comandos de activación del entorno en Windows no se pudieron ejecutar en
+el entorno de la IA (Linux); son los estándar de `venv`.
+
+**Qué aprendí.** Una instrucción de verificación en el prompt vale incluso
+contra el propio prompt: el comando que yo pedí documentar estaba mal desde el
+enunciado original del reto, y solo ejecutarlo lo reveló.
+
+---
+
 ## Intentos fallidos y ajustes
 
 *(Se registran aquí los prompts que no dieron el resultado esperado y cómo se corrigieron.)*

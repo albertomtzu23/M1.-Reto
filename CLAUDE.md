@@ -26,7 +26,8 @@ mejorar su calidad **sin cambiar su comportamiento observable**.
 pip install -r requirements.txt   # pytest y ruff
 pytest                            # TODAS las pruebas deben pasar
 ruff check src                    # meta final: 0 errores
-cd src && python main.py          # app interactiva (usa datos_ejemplo.json)
+python src/main.py                # app interactiva, desde la raíz (lee y
+                                  # SOBRESCRIBE datos_ejemplo.json con la opción 8)
 ```
 
 Después de **cada** refactorización ejecuta `pytest` **y** `ruff check src`, y
