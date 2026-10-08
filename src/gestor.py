@@ -24,22 +24,21 @@ STOCK_MINIMO = 5
 # ---------------------------------------------------------------
 INVENTARIO = {}
 VENTAS = []
-contadorVentas = 0
+contador_ventas = 0
 ultimo_error = ""
-MODO_DEBUG = False
 
 
 def reiniciar_sistema():
     """Borra todo el estado del sistema (inventario, ventas y folios)."""
-    global contadorVentas, ultimo_error
+    global contador_ventas, ultimo_error
     INVENTARIO.clear()
     VENTAS.clear()
-    contadorVentas = 0
+    contador_ventas = 0
     ultimo_error = ""
 
 
 def agregarProducto(codigo, nombre, precio, stock):
-    # valida los datos y da de alta un producto en el inventario
+    """Valida los datos y da de alta un producto en el inventario."""
     global ultimo_error
     if codigo is None or codigo == "":
         ultimo_error = "codigo vacio"
@@ -53,12 +52,12 @@ def agregarProducto(codigo, nombre, precio, stock):
     if stock < 0:
         ultimo_error = "stock invalido"
         return False
-    x = {}
-    x["codigo"] = codigo
-    x["nombre"] = nombre
-    x["precio"] = precio
-    x["stock"] = stock
-    INVENTARIO[codigo] = x
+    producto = {}
+    producto["codigo"] = codigo
+    producto["nombre"] = nombre
+    producto["precio"] = precio
+    producto["stock"] = stock
+    INVENTARIO[codigo] = producto
     return True
 
 
@@ -78,21 +77,21 @@ def actualizar_stock(codigo, cantidad):
     if codigo not in INVENTARIO:
         ultimo_error = "producto no existe"
         return False
-    aux = INVENTARIO[codigo]["stock"] + cantidad
-    if aux < 0:
+    nuevo_stock = INVENTARIO[codigo]["stock"] + cantidad
+    if nuevo_stock < 0:
         ultimo_error = "el stock no puede quedar negativo"
         return False
-    INVENTARIO[codigo]["stock"] = aux
+    INVENTARIO[codigo]["stock"] = nuevo_stock
     return True
 
 
 def buscarProducto(texto):
-    # busca productos cuyo nombre contenga el texto (sin importar mayusculas)
-    temp2 = []
-    for k in INVENTARIO:
-        if texto.lower() in INVENTARIO[k]["nombre"].lower():
-            temp2.append(INVENTARIO[k])
-    return temp2
+    """Busca productos cuyo nombre contenga el texto (sin importar mayúsculas)."""
+    resultados = []
+    for codigo in INVENTARIO:
+        if texto.lower() in INVENTARIO[codigo]["nombre"].lower():
+            resultados.append(INVENTARIO[codigo])
+    return resultados
 
 
 def calcular_descuento_volumen(subtotal):
@@ -137,40 +136,40 @@ def _validar_venta(codigo, cantidad):
 
 def _armar_ticket(venta):
     """Arma el ticket en texto plano de una venta."""
-    t = ""
-    t = t + "TIENDA LA ESQUINA\n"
-    t = t + "----------------------------\n"
-    t = t + "Folio: " + str(venta["folio"]) + "\n"
-    t = t + venta["nombre"] + " x" + str(venta["cantidad"]) + "\n"
-    t = t + "Subtotal: $" + str(venta["subtotal"]) + "\n"
+    ticket = ""
+    ticket = ticket + "TIENDA LA ESQUINA\n"
+    ticket = ticket + "----------------------------\n"
+    ticket = ticket + "Folio: " + str(venta["folio"]) + "\n"
+    ticket = ticket + venta["nombre"] + " x" + str(venta["cantidad"]) + "\n"
+    ticket = ticket + "Subtotal: $" + str(venta["subtotal"]) + "\n"
     if venta["descuento"] > 0:
-        t = t + "Descuento: -$" + str(venta["descuento"]) + "\n"
-    t = t + "IVA: $" + str(venta["impuesto"]) + "\n"
-    t = t + "TOTAL: $" + str(venta["total"]) + "\n"
-    return t
+        ticket = ticket + "Descuento: -$" + str(venta["descuento"]) + "\n"
+    ticket = ticket + "IVA: $" + str(venta["impuesto"]) + "\n"
+    ticket = ticket + "TOTAL: $" + str(venta["total"]) + "\n"
+    return ticket
 
 
 def registrar_venta(codigo, cantidad, cliente=""):
     """Registra una venta: valida, calcula, descuenta stock y guarda."""
-    global contadorVentas
-    temp2 = _validar_venta(codigo, cantidad)
-    if temp2 is None:
+    global contador_ventas
+    producto = _validar_venta(codigo, cantidad)
+    if producto is None:
         return None
-    aux = temp2["precio"] * cantidad
-    desc = calcular_descuento_volumen(aux)
-    desc = desc + calcular_descuento_vip(cliente, aux, desc)
-    base = aux - desc
+    subtotal = producto["precio"] * cantidad
+    descuento = calcular_descuento_volumen(subtotal)
+    descuento = descuento + calcular_descuento_vip(cliente, subtotal, descuento)
+    base = subtotal - descuento
     impuesto = base * TASA_IVA
     total = round(base + impuesto, 2)
-    temp2["stock"] = temp2["stock"] - cantidad
-    contadorVentas = contadorVentas + 1
+    producto["stock"] = producto["stock"] - cantidad
+    contador_ventas = contador_ventas + 1
     venta = {}
-    venta["folio"] = contadorVentas
+    venta["folio"] = contador_ventas
     venta["codigo"] = codigo
-    venta["nombre"] = temp2["nombre"]
+    venta["nombre"] = producto["nombre"]
     venta["cantidad"] = cantidad
-    venta["subtotal"] = round(aux, 2)
-    venta["descuento"] = round(desc, 2)
+    venta["subtotal"] = round(subtotal, 2)
+    venta["descuento"] = round(descuento, 2)
     venta["impuesto"] = round(impuesto, 2)
     venta["total"] = total
     venta["cliente"] = cliente
@@ -189,9 +188,9 @@ def cotizar(codigo, cantidad):
     if cantidad is None or cantidad <= 0:
         ultimo_error = "cantidad invalida"
         return None
-    aux = INVENTARIO[codigo]["precio"] * cantidad
-    desc = calcular_descuento_volumen(aux)
-    base = aux - desc
+    subtotal = INVENTARIO[codigo]["precio"] * cantidad
+    descuento = calcular_descuento_volumen(subtotal)
+    base = subtotal - descuento
     total = base + base * TASA_IVA
     return round(total, 2)
 

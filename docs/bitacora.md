@@ -96,7 +96,7 @@ Found 20 errors.
 | 2 | Constantes con nombre | 9 constantes de negocio en `gestor.py`; 17 literales reemplazados en `gestor.py` y `reportes.py` | 20/20 ✅ | 13 → 13 |
 | 3 | Extraer funciones | `registrar_venta` dividida en 4 funciones; `cotizar` reutiliza `calcular_descuento_volumen` | 20/20 ✅ | 13 → 11 |
 | 4 | Simplificar condicionales | Cláusulas de guarda en `_validar_venta` y `calcular_descuento_vip`; `hayArchivo` regresa la condición | 20/20 ✅ | 11 → 7 |
-| 5 | | | | |
+| 5 | Renombrar | Nombres descriptivos en snake_case en los 4 módulos; `MODO_DEBUG` eliminado; comentarios → docstrings; imports ordenados | 20/20 ✅ | 7 → 4 |
 
 ---
 
@@ -570,6 +570,148 @@ y 3 no revisaba ni un solo mensaje de error, que es justo lo que esta tocaba.
 Pedir a la IA que *explique* cada inversión de condición la obliga a hacer
 explícito el razonamiento donde más se equivoca (fronteras y `None`), y deja
 evidencia revisable en vez de un "confía en mí".
+
+---
+
+### Refactorización 5 · Nombres descriptivos en snake_case y docstrings
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo
+(`¿Te armo el prompt de la refactorización 5? si`). En el prototipo apareció
+un **efecto secundario no obvio**: los nombres más largos hicieron que 4 líneas
+de `reportes.py` pasaran de 88 caracteres (4 errores E501 nuevos). La IA lo
+incorporó al prompt como restricción ("no debe aparecer ningún E501"). Técnicas
+nuevas: (a) una **tabla de renombres explícita** (sin dejar que la IA elija
+nombres); (b) distinguir **nombres de variables** de **formato de datos**
+(renombrar `contadorVentas` no debe cambiar la clave `"contador"` del JSON, o
+los archivos guardados antes dejarían de cargar); (c) **cerrar un pendiente**
+de una refactorización anterior (`MODO_DEBUG`). Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Refactorización 5 — Renombrar variables y funciones con nombres
+descriptivos en snake_case.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 20 tests pasando y 7 errores de ruff.
+
+Problema: hay nombres que no dicen nada (`x`, `aux`, `temp2`, `t`, `d`,
+`hacer_cosa`), camelCase mezclado con snake_case (`contadorVentas`,
+`hayArchivo`), una constante que nadie usa (`MODO_DEBUG`) y comentarios
+que deberían ser docstrings.
+
+Objetivo: que cada nombre diga qué contiene o qué hace, SIN cambiar el
+comportamiento.
+
+Alcance (solo esto):
+1. Funciones y globales (actualiza TODAS sus referencias):
+   - gestor.contadorVentas → contador_ventas  (también en almacen.py)
+   - almacen.hayArchivo → existe_archivo      (también en main.py)
+   - reportes.hacer_cosa → formatear_moneda
+   - Elimina gestor.MODO_DEBUG (no se usa; pendiente de la refactorización 2).
+2. Variables locales:
+   - gestor: x→producto (agregarProducto), aux→nuevo_stock
+     (actualizar_stock), temp2→resultados y k→codigo (buscarProducto),
+     t→ticket (_armar_ticket), temp2→producto, aux→subtotal y
+     desc→descuento (registrar_venta y cotizar).
+   - almacen: d→datos, f→archivo, k→codigo, v→venta.
+   - reportes: temp2→productos_bajos, s→reporte/resumen, aux→valor_total
+     o unidades_por_codigo, temp→ranking, t→total/total_dia,
+     p→producto, v→monto o venta, k→codigo.
+   - main: op→opcion, c→codigo, n→nombre, p→precio o producto,
+     s→stock, cant→cantidad, cli→cliente, v→venta, t→total,
+     bajos→productos_bajos; `par[0], par[1]` → desempaca en
+     `codigo, unidades`.
+3. Convierte en docstrings los comentarios que describen funciones
+   (agregarProducto, buscarProducto, existe_archivo, formatear_moneda,
+   pedir_numero).
+4. Ordena los imports de main.py (regla I001 de ruff).
+
+Restricciones:
+- NO renombres `agregarProducto`, `buscarProducto`, `INVENTARIO`,
+  `VENTAS` ni `ultimo_error` (los usan los tests o main.py).
+- NO cambies las claves de los diccionarios ni del JSON ("contador",
+  "codigo", "stock"...): son formato de datos, no nombres de variables.
+- Si un nombre más largo hace que una línea pase de 88 caracteres,
+  divídela (puedes usar `+=`); no cambies el texto que se genera.
+- No toques la lógica: el ordenamiento de burbuja y la estructura de
+  `menu()` se quedan como están (son otras refactorizaciones).
+- No modifiques tests/ ni pyproject.toml.
+
+Validación:
+- Ejecuta los tests y `ruff check src`.
+- Resultado esperado: 20 tests pasando y 4 errores de ruff
+  (desaparecen N802, N816 e I001; no debe aparecer ningún E501).
+- Busca en src/ los nombres viejos (contadorVentas, hayArchivo,
+  hacer_cosa, MODO_DEBUG, aux, temp2, temp, op, cant, cli, par):
+  no debe quedar ninguno.
+- Repite las comparaciones antes/después de ventas y de errores.
+- Como este cambio toca reportes y persistencia, compara también:
+  texto de reporte_inventario y resumen_ventas, mas_vendidos,
+  total_vendido, buscarProducto, y el JSON que escribe guardar_datos
+  (con carga, archivo corrupto e inexistente). Debe dar 0 diferencias.
+
+Al terminar:
+1. Muéstrame el diff.
+2. Registra la entrada #5 en docs/bitacora.md: este prompt tal cual,
+   el cambio realizado, la justificación y el resultado de tests y ruff.
+3. Haz un commit `refactor: nombres descriptivos en snake_case y docstrings`
+   y súbelo a GitHub.
+```
+
+**Cambio realizado** (4 archivos, +154 / −149 líneas):
+
+| Tipo | Antes → Después |
+|---|---|
+| Global | `gestor.contadorVentas` → `contador_ventas` (en `gestor.py` y `almacen.py`) |
+| Funciones | `almacen.hayArchivo` → `existe_archivo` · `reportes.hacer_cosa` → `formatear_moneda` |
+| Código muerto | `gestor.MODO_DEBUG` eliminado |
+| Variables (gestor) | `x`→`producto`, `aux`→`nuevo_stock` / `subtotal`, `temp2`→`resultados` / `producto`, `desc`→`descuento`, `t`→`ticket`, `k`→`codigo` |
+| Variables (almacen) | `d`→`datos`, `f`→`archivo`, `k`→`codigo`, `v`→`venta` |
+| Variables (reportes) | `s`→`reporte` / `resumen`, `aux`→`valor_total` / `unidades_por_codigo`, `temp`→`ranking`, `temp2`→`productos_bajos`, `t`→`total` / `total_dia` / `anterior`, `p`→`producto`, `v`→`monto` / `venta` |
+| Variables (main) | `op`→`opcion`, `c`→`codigo`, `n`→`nombre`, `p`→`precio` / `producto`, `s`→`stock`, `cant`→`cantidad`, `cli`→`cliente`, `v`→`venta`, `t`→`total`, `bajos`→`productos_bajos`, `par[0], par[1]`→`codigo, unidades` |
+| Docstrings | 5 comentarios `# ...` convertidos en docstrings |
+| Imports | `main.py`: orden alfabético (`almacen`, `gestor`, `reportes`) |
+| Líneas largas | 4 líneas de `reportes.py` divididas con `+=` (mismo texto generado) |
+
+**Justificación.**
+- Un nombre descriptivo es documentación que no se desactualiza:
+  `unidades_por_codigo[codigo] += venta["cantidad"]` se entiende sin contexto;
+  `aux[v["codigo"]] = aux[v["codigo"]] + v["cantidad"]` no.
+- `hacer_cosa` era el caso extremo: el nombre no decía nada y había que leer
+  el comentario para saber que formatea dinero. Ahora el nombre *es* el
+  comentario.
+- Un solo estilo (snake_case, PEP 8) elimina la duda de "¿cómo se llamaba?"
+  al usar una función. Solo `agregarProducto` y `buscarProducto` conservan
+  camelCase porque los tests los usan (están en `ignore-names` de ruff).
+- Los docstrings, a diferencia de los comentarios, los muestran `help()` y
+  los editores.
+
+**Verificación.**
+
+| Comprobación | Resultado |
+|---|---|
+| Tests | **20 passed** |
+| `ruff check src` | 7 → **4 errores** (−N802, −N816, −I001; 0 E501) |
+| Búsqueda de nombres viejos en `src/` | **0 restantes** (solo falsos positivos: la `n` de `\n`, palabras de docstrings y el parámetro público `n` de `mas_vendidos`) |
+| Equivalencia de ventas (926 casos) | **0 diferencias** |
+| Equivalencia de errores y frontera VIP (53 casos) | **0 diferencias** |
+| Equivalencia de reportes y persistencia (23 salidas: textos de reportes, ranking, totales, búsqueda, JSON guardado, carga, archivo corrupto e inexistente) | **0 diferencias** |
+| Sesión simulada del menú interactivo (iniciativa de la IA: `main.py` no tiene tests) — las 8 opciones + una inválida, reintento por número mal escrito, venta VIP, stock insuficiente, cotización, reportes y guardado | Salida de consola (154 líneas) y JSON guardado **idénticos** |
+
+**Tropiezo.** El primer guion de entradas para simular el menú quedó
+desalineado (faltaban las respuestas a "código de cliente") y no recorría
+todas las opciones, aunque la comparación salía "idéntica". La IA lo notó al
+revisar qué mensajes aparecían y corrigió el guion. Lección: un "0
+diferencias" solo vale si se verifica que la prueba realmente ejecutó los
+casos que se querían cubrir.
+
+**Qué aprendí.** Renombrar parece el cambio más inocente y fue el que
+más archivos tocó (4) y el que tuvo un efecto colateral medible (líneas
+largas). También quedó claro que hay nombres que **no** son míos para
+cambiar: los que forman parte de un contrato (tests, claves del JSON). El
+prompt tuvo que separar explícitamente "nombres internos" de "formato de
+datos".
 
 ---
 
