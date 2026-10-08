@@ -101,6 +101,7 @@ Found 20 errors.
 | C1 | Corrección de bug (cambio intencional) | `cargar_datos` valida la estructura antes de modificar el estado; 5 pruebas nuevas en `tests/test_casos_limite.py` | 25/25 ✅ | 1 → 1 |
 | 7 | Dividir función gigante | `menu()` → 5 funciones `menu_*` + diccionario `ACCIONES`; complejidad 17 → < 10 | 25/25 ✅ | 1 → **0** |
 | 8 | Type hints | Anotaciones en las 28 funciones, globales y contenedores; alias `Producto`/`Venta`; `mypy --strict` 58 → 0 | 25/25 ✅ | 0 → 0 |
+| T | Pruebas de casos límite | 37 casos nuevos (fronteras de descuento y VIP, validaciones, ticket, reportes, ñ); mutación: suite original 0/10 → completa 10/10 | 62/62 ✅ | 0 → 0 |
 
 ---
 
@@ -1170,6 +1171,150 @@ instructivo no fue de mypy sino mío: "arreglar" un tipo con una conversión
 parecía inocente y cambiaba el comportamiento. Pasar las pruebas no es
 lo mismo que no cambiar nada: hay que preguntarse qué pasa con datos que las
 pruebas no cubren.
+
+---
+
+### Pruebas · Casos límite de descuentos, VIP, validaciones y reportes
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo
+(`¿Te armo el prompt de los tests de casos límite? si`). En el prototipo la IA
+(a) **calculó a mano** los valores de frontera (p. ej. 499.99 × 1.16 = 579.9884
+→ 579.99) y los comparó con lo que regresa el código antes de ponerlos en el
+prompt; (b) corrió las pruebas nuevas **contra el código original** y descubrió
+que una de ellas leía una variable interna renombrada (`contador_ventas`), así
+que la reescribió como prueba de caja negra (la siguiente venta debe tener
+folio 1); (c) armó una **prueba de mutación** para medir si las pruebas sirven,
+no solo si pasan. Técnicas: **valores esperados verificados en el prompt**
+(evita que la IA "consagre" en un test lo que el código regresa, aunque sea un
+bug), **restricción de caja negra** y **validación contra el código original**.
+Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Tests de casos límite — Ampliar tests/test_casos_limite.py para cubrir
+las fronteras y reglas que la suite original no prueba.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 25 tests pasando (20 originales + 5 de la corrección del
+bug de carga), 0 errores de ruff, mypy --strict sin errores.
+
+Problema: la suite original prueba casos "del medio" (600, 2000), pero no
+las fronteras donde cambian las reglas (500, 1000, el VIP en 200, stock
+exacto, stock mínimo en 5) ni qué mensaje de error queda en cada caso.
+Un error de `>=` vs `>` en cualquiera de ellas pasaría sin ser detectado.
+
+Objetivo: agregar pruebas de caja negra de esas fronteras al archivo
+tests/test_casos_limite.py, sin tocar los tests originales.
+
+Alcance (usa @pytest.mark.parametrize cuando sean variantes del mismo caso):
+1. Descuento por volumen con precio × 1: 499.99 → sin descuento, total
+   579.99 · 500 → descuento 25.0, total 551.0 · 999.99 → 50.0, 1101.99 ·
+   1000 → 100.0, 1044.0. Y que `cotizar` respete la misma frontera.
+2. VIP: compra de exactamente 200 → total 232.0 (no aplica) · 200.01 →
+   227.37 (sí aplica). Clientes que NO son VIP: "vip001", "XVIP01", "VI",
+   "", None. `cotizar` no aplica VIP (661.2 vs 647.28 con "VIP007").
+3. Stock y folios: vender exactamente todo el stock sí se puede (y la
+   siguiente falla con "stock insuficiente"); una venta fallida no
+   consume folio; `cotizar` no valida stock.
+4. Mensajes de `ultimo_error`, incluyendo el ORDEN de las validaciones
+   (código vacío antes que cantidad, producto inexistente antes que
+   cantidad) en `registrar_venta`, y los 4 mensajes de `agregarProducto`.
+   Alta con stock 0 es válida. `actualizar_stock` de un inexistente.
+5. Ticket completo carácter por carácter sin descuento, y la línea
+   "Descuento: -$30.0" cuando sí hay.
+6. Reportes: stock igual a 5 NO es stock bajo (4 sí); `mas_vendidos`
+   conserva el orden de inserción en empates, funciona sin ventas y con
+   n mayor que los productos; texto exacto de `resumen_ventas`.
+7. Persistencia: guardar y cargar conserva "Café de Ñuñoa" sin escapes
+   \u en el archivo.
+
+Restricciones:
+- Pruebas de CAJA NEGRA: solo API pública (las mismas funciones y
+  globales que usan los tests originales). Nada de constantes o
+  variables internas renombradas en las refactorizaciones: los tests
+  deben poder correr también contra el código original.
+- Calcula a mano los valores esperados y verifica al menos los de
+  frontera; no copies lo que regresa el código sin comprobarlo.
+- No modifiques test_gestor.py, test_almacen.py, test_reportes.py,
+  conftest.py ni pyproject.toml. No toques src/.
+
+Validación:
+1. Suite completa: todos pasan, 0 errores de ruff.
+2. Contra el código ORIGINAL (commit a9931ac, sin refactorizar):
+   las pruebas nuevas deben pasar todas, salvo las 3 del bug corregido.
+   Eso demuestra que las refactorizaciones conservaron el comportamiento.
+3. Prueba de mutación manual: introduce uno por uno estos 10 errores en
+   una copia de src/ y reporta cuántos detecta la suite original y
+   cuántos la suite completa: umbral medio `>=`→`>`, umbral alto
+   `>=`→`>`, VIP `<=`→`<`, VIP sin distinguir mayúsculas, stock
+   `<`→`<=`, validar cantidad antes que existencia, alta con stock 0
+   rechazada, ticket con `>= 0`, stock bajo con `<=`, empates del
+   ranking con `<=`.
+
+Al terminar:
+1. Muéstrame cuántas pruebas nuevas hay y la tabla de mutación.
+2. Registra la entrada en docs/bitacora.md: este prompt tal cual, las
+   pruebas agregadas, los resultados contra el código original y la
+   tabla de mutación.
+3. Haz un commit `test: casos límite de descuentos, VIP, validaciones y reportes`
+   y súbelo a GitHub.
+```
+
+**Pruebas agregadas** (`tests/test_casos_limite.py`; 19 funciones nuevas =
+**37 casos** con `parametrize`; las pruebas originales no se tocaron):
+
+| Grupo | Casos | Qué protege |
+|---|---|---|
+| Fronteras de descuento por volumen | 5 | 499.99 / 500 / 999.99 / 1000 en venta, y 500 en `cotizar` |
+| Regla VIP | 8 | Compra de 200 exactos vs. 200.01; 5 códigos que **no** son VIP (minúsculas, prefijo en medio, corto, vacío, None); `cotizar` sin VIP |
+| Stock y folios | 3 | Vender todo el stock y ni una más; venta fallida no consume folio; `cotizar` no valida stock |
+| Mensajes y orden de validaciones | 14 | 8 combinaciones de `registrar_venta` (incluye código vacío **y** cantidad 0 → gana "codigo vacio"), 4 mensajes de `agregarProducto`, alta con stock 0, `actualizar_stock` inexistente |
+| Ticket | 2 | Texto completo carácter por carácter; línea de descuento solo cuando aplica |
+| Reportes | 4 | Stock 5 no es bajo (4 sí); empates en `mas_vendidos` conservan el orden; sin ventas y `n` mayor; texto exacto de `resumen_ventas` |
+| Persistencia | 1 | "Café de Ñuñoa" se guarda sin escapes `\u` y se recupera igual |
+
+**Resultado 1 — Suite completa.** **62 passed** (20 originales + 5 de la
+corrección + 37 nuevos). `ruff check src`: 0 errores. El archivo de pruebas
+también pasa ruff (aunque `tests/` está excluido del linter del proyecto).
+`src/` sin cambios.
+
+**Resultado 2 — Contra el código ORIGINAL (`a9931ac`, sin refactorizar).**
+De las 42 pruebas del archivo, **39 pasan y 3 fallan**, exactamente las 3 del
+bug corregido (lista, sin "inventario", sin "ventas"). Las 37 pruebas nuevas
+pasan **todas** con el código original: es evidencia independiente de que las
+8 refactorizaciones conservaron el comportamiento en todas esas fronteras.
+
+**Resultado 3 — Prueba de mutación manual.** Se introdujo un error a la vez en
+una copia de `src/` y se corrieron ambas suites:
+
+| Mutante (error introducido) | Suite original (20) | Suite completa (62) |
+|---|---|---|
+| Umbral medio: `>= 500` → `> 500` | pasa sin verlo | **detectado** |
+| Umbral alto: `>= 1000` → `> 1000` | pasa sin verlo | **detectado** |
+| VIP: una compra de 200 exactos recibe descuento (`<=` → `<`) | pasa sin verlo | **detectado** |
+| VIP: no distingue mayúsculas (`"vip001"` sería VIP) | pasa sin verlo | **detectado** |
+| Stock: no deja vender la última unidad (`<` → `<=`) | pasa sin verlo | **detectado** |
+| Valida la cantidad antes que la existencia del producto | pasa sin verlo | **detectado** |
+| Alta con stock 0 rechazada (`< 0` → `<= 0`) | pasa sin verlo | **detectado** |
+| Ticket siempre muestra la línea de descuento (`> 0` → `>= 0`) | pasa sin verlo | **detectado** |
+| Stock bajo con 5 unidades (`<` → `<=`) | pasa sin verlo | **detectado** |
+| Empates de `mas_vendidos` en otro orden (`<` → `<=`) | pasa sin verlo | **detectado** |
+| **Total** | **0 / 10** | **10 / 10** |
+
+**Tropiezo.** El script de mutación falló al primer intento: el bloque de
+validación "producto no existe / cantidad inválida" aparece **dos veces**
+(en `_validar_venta` y en `cotizar`) y el reemplazo exigía una sola
+coincidencia. Se ajustó para mutar solo la primera. Curiosamente, revela
+duplicación que todavía queda entre las validaciones de `cotizar` y
+`_validar_venta` (con una diferencia real: `cotizar` no valida código vacío ni
+stock), candidata a una refactorización futura.
+
+**Qué aprendí.** "Los tests pasan" no dice qué tan buenos son: la suite
+original pasaba con los 10 errores. La prueba de mutación convierte esa
+pregunta en un número. Correr las pruebas nuevas contra el código original
+fue la mejor evidencia de que refactoricé sin cambiar el comportamiento, y
+obligó a que fueran de verdad de caja negra.
 
 ---
 
