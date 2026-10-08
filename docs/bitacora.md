@@ -1318,6 +1318,34 @@ obligó a que fueran de verdad de caja negra.
 
 ---
 
+### Reflexión final · Escrita a partir de mis respuestas
+
+**Cómo se hizo.** La IA me ofreció dos caminos: que ella generara la
+reflexión y yo la ajustara, o hacerme preguntas primero para escribirla con mis
+respuestas. Respondí `si` (ambiguo); la IA lo interpretó como la segunda
+opción, lo dijo explícitamente y me hizo 5 preguntas. Mis respuestas,
+**tal cual**:
+
+```text
+1. Esperaba que la refactorizacion fuera facil y entendible para mis conocimientos
+   sin embargo la IA es poderosa para esta tarea.
+2. lo que mas me sirvio fue la comparaciones del antes y el despues, el como la IA
+   genero los cambios y me explico las razones de estos.
+3. un tema que tengo problemas es en crear los promps a detalle de un tema que no
+   me queda claro, debo de admitir que le pedi ayuda a los prompts para poder crearlos.
+4. Senti que mi participacion era en revisar los prompts que me proponia la ia y en
+   tomar decisiones de acuerdo a las sugerencias que me daba la IA. Me llevo el
+   aprender a detallar los promps pero sobre todo tener el mayor conocimiento de lo
+   que trata la tarea o desarrollo y asi poder tomar decisiones de como debe actuar
+   la IA.
+```
+
+La IA redactó [`docs/reflexion.md`](reflexion.md) en primera persona,
+conservando mis ideas y completándolas con los datos de esta bitácora (cifras,
+hallazgos y tropiezos).
+
+---
+
 ## Intentos fallidos y ajustes
 
 *(Se registran aquí los prompts que no dieron el resultado esperado y cómo se corrigieron.)*
