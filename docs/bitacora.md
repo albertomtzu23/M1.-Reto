@@ -1518,3 +1518,9 @@ mypy   (Python 3.12): Success: no issues found in 4 source files
 ```
 
 Detalle completo en [`docs/evidencia.md`](evidencia.md).
+
+## Entrega
+
+Pull Request [#1](https://github.com/albertomtzu23/M1.-Reto/pull/1):
+`refactorizacion` → `main`, con la descripción del formato de entrega y el
+*check* de CI (pytest, ruff y mypy en Python 3.10 y 3.12).
