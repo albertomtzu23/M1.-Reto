@@ -23,12 +23,31 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Pruebas (pytest)
-        run: pytest -v
+        run: |
+          set -o pipefail
+          pytest -v | tee pytest.log
+          echo "::notice title=pytest (Python ${{ matrix.python-version }})::$(tail -n 1 pytest.log)"
 
       - name: Linter (ruff)
-        run: ruff check src
+        run: |
+          set -o pipefail
+          ruff check src | tee ruff.log
+          echo "::notice title=ruff (Python ${{ matrix.python-version }})::$(tail -n 1 ruff.log)"
 
       - name: Tipos (mypy --strict, verificación adicional)
         run: |
+          set -o pipefail
           pip install mypy
-          mypy --strict src
+          mypy --strict src | tee mypy.log
+          echo "::notice title=mypy (Python ${{ matrix.python-version }})::$(tail -n 1 mypy.log)"
+
+      - name: Resumen del job
+        run: |
+          {
+            echo "### Python ${{ matrix.python-version }}"
+            echo '```'
+            tail -n 1 pytest.log
+            tail -n 1 ruff.log
+            tail -n 1 mypy.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
