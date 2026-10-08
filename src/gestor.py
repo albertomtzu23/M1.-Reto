@@ -110,34 +110,29 @@ def calcular_descuento_vip(cliente, subtotal, descuento):
     Aplica cuando el código del cliente empieza con PREFIJO_VIP y la compra,
     ya con el descuento por volumen, supera MONTO_MINIMO_VIP.
     """
-    if cliente != "" and cliente is not None:
-        if len(cliente) >= len(PREFIJO_VIP):
-            if cliente[0:len(PREFIJO_VIP)] == PREFIJO_VIP:
-                if subtotal - descuento > MONTO_MINIMO_VIP:
-                    return subtotal * TASA_DESCUENTO_VIP
-    return 0
+    if not cliente or not cliente.startswith(PREFIJO_VIP):
+        return 0
+    if subtotal - descuento <= MONTO_MINIMO_VIP:
+        return 0
+    return subtotal * TASA_DESCUENTO_VIP
 
 
 def _validar_venta(codigo, cantidad):
     """Valida la venta; regresa el producto o None (y deja ultimo_error)."""
     global ultimo_error
-    if codigo is not None and codigo != "":
-        if codigo in INVENTARIO:
-            if cantidad is not None and cantidad > 0:
-                if INVENTARIO[codigo]["stock"] >= cantidad:
-                    return INVENTARIO[codigo]
-                else:
-                    ultimo_error = "stock insuficiente"
-                    return None
-            else:
-                ultimo_error = "cantidad invalida"
-                return None
-        else:
-            ultimo_error = "producto no existe"
-            return None
-    else:
+    if codigo is None or codigo == "":
         ultimo_error = "codigo vacio"
         return None
+    if codigo not in INVENTARIO:
+        ultimo_error = "producto no existe"
+        return None
+    if cantidad is None or cantidad <= 0:
+        ultimo_error = "cantidad invalida"
+        return None
+    if INVENTARIO[codigo]["stock"] < cantidad:
+        ultimo_error = "stock insuficiente"
+        return None
+    return INVENTARIO[codigo]
 
 
 def _armar_ticket(venta):

@@ -95,7 +95,7 @@ Found 20 errors.
 | 1 | Eliminar código muerto | Se quitaron 2 funciones sin uso, 1 bloque comentado, 1 import sin usar y 4 declaraciones de encoding | 20/20 ✅ | 20 → 13 |
 | 2 | Constantes con nombre | 9 constantes de negocio en `gestor.py`; 17 literales reemplazados en `gestor.py` y `reportes.py` | 20/20 ✅ | 13 → 13 |
 | 3 | Extraer funciones | `registrar_venta` dividida en 4 funciones; `cotizar` reutiliza `calcular_descuento_volumen` | 20/20 ✅ | 13 → 11 |
-| 4 | | | | |
+| 4 | Simplificar condicionales | Cláusulas de guarda en `_validar_venta` y `calcular_descuento_vip`; `hayArchivo` regresa la condición | 20/20 ✅ | 11 → 7 |
 | 5 | | | | |
 
 ---
@@ -444,6 +444,132 @@ mostró algo que ninguna prueba detecta: al extraer funciones se pierden
 comentarios con conocimiento del negocio. Y un prompt muy detallado puede
 contradecirse ("mueve tal cual" + "desaparece SIM108"): conviene releerlo
 buscando instrucciones que choquen.
+
+---
+
+### Refactorización 4 · Simplificar condicionales con cláusulas de guarda
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo (`¿Te armo el prompt? SI`).
+La IA volvió a prototipar antes de proponerlo y, al hacerlo, **detectó que su
+propia verificación de equivalencia era insuficiente** para este cambio: solo
+comparaba ventas exitosas, y lo que se iba a tocar eran las validaciones. Amplió
+la comparación a los caminos de error antes de escribir el prompt. Técnicas
+nuevas: (a) **anticipar el error típico** de la refactorización (invertir mal una
+frontera al convertir un `if` en guarda) y pedir que cada inversión se
+explique; (b) señalar una **trampa del lenguaje** (el orden del cortocircuito
+con `None`); (c) **ajustar la validación al riesgo** del cambio. Lo envié sin
+cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Refactorización 4 — Simplificar condicionales anidados con cláusulas de guarda.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 20 tests pasando y 11 errores de ruff.
+
+Problema: hay condicionales anidados hasta 4 niveles que obligan a leer
+de afuera hacia adentro para saber qué pasa en cada caso, y un
+`if/else` que solo regresa True o False.
+
+Objetivo: aplanar esos condicionales para que cada regla se lea en una
+línea, SIN cambiar el comportamiento.
+
+Alcance (solo esto):
+1. gestor.py, `_validar_venta`: reescríbela con cláusulas de guarda
+   (un `if` por validación que asigna `ultimo_error` y regresa None),
+   en este orden exacto: código vacío → producto no existe →
+   cantidad inválida → stock insuficiente. Al final regresa el producto.
+2. gestor.py, `calcular_descuento_vip`: reemplaza los 4 `if` anidados por
+   cláusulas de guarda. La comprobación de `len(...)` + `cliente[0:...]`
+   se puede expresar con `cliente.startswith(PREFIJO_VIP)`.
+3. almacen.py, `hayArchivo`: el `if/else` que regresa True/False se
+   reemplaza por `return os.path.exists(ruta)`. No la renombres.
+
+Restricciones:
+- Al invertir una condición para convertirla en guarda, cuida las
+  fronteras: `>` se invierte a `<=` y `>=` a `<`. Explica en el diff
+  cada inversión que hagas.
+- Conserva el cortocircuito con None: `cantidad is None or cantidad <= 0`
+  (si se evalúa `<=` con None, truena).
+- No cambies los mensajes de `ultimo_error` ni qué mensaje queda en
+  cada caso.
+- No toques `menu()` de main.py: su complejidad es otra refactorización.
+- No renombres variables ni funciones (eso es la refactorización 5).
+- No modifiques tests/ ni pyproject.toml.
+
+Validación:
+- Ejecuta los tests y `ruff check src`.
+- Resultado esperado: 20 tests pasando y 7 errores de ruff
+  (desaparecen los 3 SIM102 y el SIM103).
+- Repite la comparación antes/después de ventas exitosas (casos límite
+  de precio, cantidad y cliente): 0 diferencias.
+- Como este cambio toca las validaciones, compara también los caminos de
+  error: código None/""/inexistente × cantidad None/negativa/0/mayor al
+  stock, en `registrar_venta` y `cotizar`, revisando valor de retorno,
+  `ultimo_error`, stock y número de ventas; y la frontera VIP exacta
+  (compra de 200, 199.99 y 200.01). Debe dar 0 diferencias.
+
+Al terminar:
+1. Muéstrame el diff.
+2. Registra la entrada #4 en docs/bitacora.md: este prompt tal cual,
+   el cambio realizado, la justificación y el resultado de tests y ruff.
+3. Haz un commit `refactor: aplana condicionales con cláusulas de guarda`
+   y súbelo a GitHub.
+```
+
+**Cambio realizado** (`src/gestor.py` +16/−21, `src/almacen.py` +1/−4):
+
+| Función | Antes | Después |
+|---|---|---|
+| `_validar_venta` | 4 niveles de `if/else` anidados (profundidad 5) | 4 cláusulas de guarda de un nivel + `return` final |
+| `calcular_descuento_vip` | 4 `if` anidados | 2 guardas + `return` |
+| `hayArchivo` | `if cond: return True else: return False` | `return os.path.exists(ruta)` |
+
+**Explicación de cada condición invertida** (pedida por el prompt):
+
+| # | Condición original (para continuar) | Guarda (para salir) | Regla aplicada |
+|---|---|---|---|
+| 1 | `codigo is not None and codigo != ""` | `codigo is None or codigo == ""` | De Morgan: `not (A and B)` = `not A or not B` |
+| 2 | `codigo in INVENTARIO` | `codigo not in INVENTARIO` | Negación directa |
+| 3 | `cantidad is not None and cantidad > 0` | `cantidad is None or cantidad <= 0` | De Morgan + `>` se invierte a `<=`. El `is None` va primero: si `cantidad` es None, el `or` corta y nunca se evalúa `None <= 0` (que lanzaría `TypeError`). |
+| 4 | `stock >= cantidad` | `stock < cantidad` | `>=` se invierte a `<` (stock igual a la cantidad **sí** se vende) |
+| 5 | `cliente != "" and cliente is not None` + `len(cliente) >= len(PREFIJO_VIP)` + `cliente[0:len(...)] == PREFIJO_VIP` | `not cliente or not cliente.startswith(PREFIJO_VIP)` | `not cliente` cubre `""` y `None`; `startswith` ya implica la longitud mínima. |
+| 6 | `subtotal - descuento > MONTO_MINIMO_VIP` | `subtotal - descuento <= MONTO_MINIMO_VIP` | `>` se invierte a `<=`: una compra de **exactamente 200** sigue **sin** descuento VIP |
+
+Matiz de la inversión 5: `not cliente` también trata como "sin cliente" otros
+valores *falsy* (p. ej. `0`), cosa que el original no hacía (habría lanzado
+error en `len()`). En la práctica `cliente` solo llega como texto desde
+`main.py` o como `None`, así que no hay cambio observable.
+
+**Justificación.**
+- Con guardas, cada regla se lee en **una línea**, en el orden en que se
+  aplica, y el "camino feliz" queda al final sin sangría. Antes había que
+  emparejar cada `else` con su `if` cuatro niveles arriba para saber qué
+  mensaje correspondía a qué validación.
+- Agregar o quitar una validación ahora es agregar o quitar un bloque de 3
+  líneas, sin reacomodar la sangría de todo lo demás.
+- `startswith` expresa la intención ("empieza con VIP") en lugar de la
+  mecánica (medir largo + rebanar + comparar).
+- `hayArchivo`: devolver la condición directamente elimina 3 líneas que
+  no aportaban nada.
+
+**Resultado.**
+
+| | Antes | Después |
+|---|---|---|
+| Tests | 20 passed | **20 passed** |
+| `ruff check src` | 11 errores | **7 errores** (−3 SIM102, −1 SIM103) |
+| Equivalencia de ventas exitosas (926 casos) | — | **0 diferencias** |
+| Equivalencia de caminos de error y frontera VIP (53 casos) | — | **0 diferencias** |
+| Profundidad máxima de anidamiento en `_validar_venta` | 5 | **2** |
+
+**Qué aprendí.** La verificación tiene que diseñarse según lo que el
+cambio puede romper: la comparación que bastaba para las refactorizaciones 2
+y 3 no revisaba ni un solo mensaje de error, que es justo lo que esta tocaba.
+Pedir a la IA que *explique* cada inversión de condición la obliga a hacer
+explícito el razonamiento donde más se equivoca (fronteras y `None`), y deja
+evidencia revisable en vez de un "confía en mí".
 
 ---
 
