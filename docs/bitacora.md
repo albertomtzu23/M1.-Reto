@@ -100,6 +100,7 @@ Found 20 errors.
 | 6 | Manejo de errores | `with open` en lectura y escritura; `except Exception` → `except (ValueError, RecursionError)` | 20/20 ✅ | 4 → 1 |
 | C1 | Corrección de bug (cambio intencional) | `cargar_datos` valida la estructura antes de modificar el estado; 5 pruebas nuevas en `tests/test_casos_limite.py` | 25/25 ✅ | 1 → 1 |
 | 7 | Dividir función gigante | `menu()` → 5 funciones `menu_*` + diccionario `ACCIONES`; complejidad 17 → < 10 | 25/25 ✅ | 1 → **0** |
+| 8 | Type hints | Anotaciones en las 28 funciones, globales y contenedores; alias `Producto`/`Venta`; `mypy --strict` 58 → 0 | 25/25 ✅ | 0 → 0 |
 
 ---
 
@@ -1032,6 +1033,143 @@ funciones `registrar_venta` (una en `gestor`, otra en `main`) son legales en
 Python pero confunden a quien lee. Y una lección de la refactorización 5
 ("verifica que la prueba ejecutó lo que querías") ya no fue un tropiezo,
 sino un paso del prompt: así se acumula el aprendizaje en el proceso.
+
+---
+
+### Refactorización 8 · Type hints validados con `mypy --strict`
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo (`si`). Antes de
+diseñarlo, la IA **revisó qué herramientas había disponibles** y encontró
+`mypy`, lo que cambió el enfoque: los type hints no solo se escriben, se
+**verifican**. Midió la línea base (58 errores en modo estricto) para tener un
+resultado esperado objetivo. Técnicas nuevas: (a) **una herramienta externa
+como criterio de aceptación** (`mypy --strict` sin errores) sin convertirla en
+dependencia del proyecto; (b) **pedir que se justifique una decisión de diseño
+descartada** (TypedDict); (c) una **restricción nacida de un error propio del
+prototipo** (ver *Tropiezo*). Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Refactorización 8 — Agregar type hints a todas las funciones y validarlos
+con mypy en modo estricto.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 25 tests pasando, 0 errores de ruff y 58 errores de
+`mypy --strict src` (ninguna función tiene anotaciones).
+
+Problema: sin type hints, para saber qué recibe y qué regresa una
+función hay que leer su cuerpo (¿`cotizar` regresa un número o un texto?,
+¿`cliente` puede ser None?), y ninguna herramienta puede detectar errores
+de tipos.
+
+Objetivo: anotar parámetros, valores de retorno, globales y
+contenedores vacíos en los 4 módulos, SIN cambiar el comportamiento.
+
+Alcance:
+1. gestor.py: define los alias `Producto = dict[str, Any]` y
+   `Venta = dict[str, Any]` y úsalos en las firmas. Anota los globales
+   (`INVENTARIO: dict[str, Producto]`, `VENTAS: list[Venta]`,
+   `contador_ventas: int`, `ultimo_error: str`).
+   Parámetros que pueden llegar como None (`codigo`, `cantidad`,
+   `cliente` en la venta y la validación) van como `X | None`.
+2. almacen.py, reportes.py y main.py: anota todas las funciones.
+   `mas_vendidos` regresa `list[tuple[str, int]]`; las funciones del
+   menú regresan `None`; `ACCIONES` es `dict[str, Callable[[], object]]`
+   (las opciones 4 y 5 regresan texto que se ignora).
+3. Anota los contenedores vacíos (`= {}`, `= []`) y los acumuladores que
+   empiezan en 0 pero suman floats.
+
+Restricciones:
+- Usa sintaxis de Python 3.10: `str | None`, `list[...]`, `dict[...]`
+  (sin `Optional` ni `List`) y `Callable` de `collections.abc`.
+- NO uses TypedDict: los diccionarios de producto y venta se arman clave
+  por clave y su orden de claves define el JSON; cambiar eso es otra
+  refactorización. Explica esta decisión en la bitácora.
+- Si mypy marca un valor `Any` (lo que se lee de un Producto/Venta),
+  resuélvelo anotando la variable, NO con conversiones como `str(...)` o
+  `float(...)`: una conversión cambia el comportamiento con datos
+  inesperados en el JSON.
+- mypy se usa solo como verificación: NO lo agregues a requirements.txt
+  ni a pyproject.toml.
+- No modifiques tests/ ni pyproject.toml.
+
+Validación:
+- Ejecuta los tests, `ruff check src` y `mypy --strict src`.
+- Resultado esperado: 25 tests pasando, 0 errores de ruff y
+  "Success: no issues found" en mypy (de 58 a 0).
+- Repite las comparaciones antes/después (ventas, errores, reportes/JSON,
+  persistencia) y la sesión simulada del menú: 0 diferencias.
+
+Al terminar:
+1. Muéstrame el diff.
+2. Registra la entrada #8 en docs/bitacora.md: este prompt tal cual,
+   el cambio realizado, la justificación, los errores que encontró mypy
+   y cómo se resolvieron, y el resultado de tests, ruff y mypy.
+3. Haz un commit `refactor: type hints en todas las funciones (mypy --strict sin errores)`
+   y súbelo a GitHub.
+```
+
+**Cambio realizado** (4 archivos, +58 / −45 líneas):
+
+| Módulo | Anotaciones |
+|---|---|
+| `gestor.py` | Alias `Producto` y `Venta` (`dict[str, Any]`); globales `INVENTARIO`, `VENTAS`, `contador_ventas`, `ultimo_error`; las 11 funciones, con `str \| None` / `int \| None` donde llegan valores nulos; contenedores `producto`, `resultados`, `venta`, `ticket` y `subtotal` en `cotizar` |
+| `almacen.py` | 4 funciones (`ruta: str`, `-> bool`); `datos: dict[str, object]`; `_estructura_valida(datos: object)` |
+| `reportes.py` | 6 funciones; `mas_vendidos -> list[tuple[str, int]]`; acumuladores `float` y contenedores tipados |
+| `main.py` | 7 funciones (`-> None` / `-> float`); `ACCIONES: dict[str, Callable[[], object]]` con `Callable` de `collections.abc` |
+| `.gitignore` | `.mypy_cache/` |
+
+**Errores que encontró mypy después de anotar** (que la lectura del código no
+había detectado) **y cómo se resolvieron:**
+
+| # | Error de mypy | Causa | Solución |
+|---|---|---|---|
+| 1 | `Incompatible types in assignment (float → str)` en `agregarProducto` | `producto = {}` sin anotar: mypy deduce `dict[str, str]` por la **primera** asignación (`codigo`) y luego rechaza `precio` | `producto: Producto = {}` |
+| 2 | `Returning Any from function declared to return "str"` en `_armar_ticket` | `venta["nombre"]` es `Any`; al sumarlo al ticket, mypy pierde la garantía de que el resultado sea `str` | `ticket: str = ""` |
+| 3 | `Returning Any … "float \| None"` en `cotizar` | `INVENTARIO[codigo]["precio"]` es `Any`, y todo el cálculo hereda `Any` | `subtotal: float = …` |
+
+**Tropiezo (y por qué existe la restricción de "no conversiones").** En el
+prototipo, la primera corrección del error 2 fue `str(venta["nombre"])`: mypy
+pasaba y las pruebas también. Pero si un JSON cargado trajera un nombre
+numérico, el original truena (`str + int`) y la versión con `str(...)` no:
+**un cambio de comportamiento escondido** detrás de un "arreglo de tipos". Se
+reemplazó por la anotación `ticket: str = ""`, que no toca la lógica, y se
+agregó al prompt la restricción explícita.
+
+**Decisión de diseño: por qué no `TypedDict`.** Un `TypedDict` para
+`Producto` y `Venta` daría tipos por clave (mypy detectaría `venta["totl"]`).
+Se descartó en esta refactorización porque: (1) los diccionarios se arman
+clave por clave (`venta = {}` y luego `venta["folio"] = …`), lo que un
+`TypedDict` no permite sin reestructurar la construcción; (2) el **orden de
+inserción de las claves define el JSON** que se guarda, y reestructurar la
+construcción arriesga cambiarlo; (3) los datos cargados del JSON llegan sin
+tipo de todas formas. Queda como mejora posible, en su propio cambio.
+
+**Justificación.**
+- Las firmas ahora documentan el contrato: `cotizar(codigo: str,
+  cantidad: int | None) -> float | None` dice, sin leer el cuerpo, que puede
+  regresar `None` y que hay que revisarlo.
+- `mypy --strict` pasó de 58 errores a 0 y puede ejecutarse en cualquier
+  cambio futuro para detectar errores de tipos antes de correr el programa.
+- El editor ahora autocompleta y advierte con base en los tipos.
+
+**Resultado.**
+
+| | Antes | Después |
+|---|---|---|
+| Tests | 25 passed | **25 passed** |
+| `ruff check src` | 0 | **0** |
+| `mypy --strict src` | 58 errores | **0 — "Success: no issues found in 4 source files"** |
+| Ventas (926), errores (53), reportes/JSON (23), persistencia (17) | — | **0 diferencias** |
+| Sesión simulada del menú | — | consola (154 líneas) y JSON **idénticos** |
+
+**Qué aprendí.** Escribir type hints sin verificarlos es documentación que
+puede mentir; con mypy se convierten en una prueba. Y el error más
+instructivo no fue de mypy sino mío: "arreglar" un tipo con una conversión
+parecía inocente y cambiaba el comportamiento. Pasar las pruebas no es
+lo mismo que no cambiar nada: hay que preguntarse qué pasa con datos que las
+pruebas no cubren.
 
 ---
 

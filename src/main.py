@@ -1,5 +1,7 @@
 """Punto de entrada del gestor de tienda (menu interactivo en consola)."""
 
+from collections.abc import Callable
+
 import almacen
 import gestor
 import reportes
@@ -7,7 +9,7 @@ import reportes
 ARCHIVO = "datos_ejemplo.json"
 
 
-def pedir_numero(mensaje):
+def pedir_numero(mensaje: str) -> float:
     """Pide un número al usuario hasta que escriba algo válido."""
     while True:
         respuesta = input(mensaje)
@@ -29,7 +31,7 @@ TEXTO_MENU = """
 OPCION_SALIR = "8"
 
 
-def menu_agregar_producto():
+def menu_agregar_producto() -> None:
     """Opción 1: pide los datos de un producto y lo da de alta."""
     codigo = input("Codigo: ")
     nombre = input("Nombre: ")
@@ -41,7 +43,7 @@ def menu_agregar_producto():
         print("Error:", gestor.ultimo_error)
 
 
-def menu_registrar_venta():
+def menu_registrar_venta() -> None:
     """Opción 2: registra una venta e imprime el ticket."""
     codigo = input("Codigo del producto: ")
     cantidad = int(pedir_numero("Cantidad: "))
@@ -53,7 +55,7 @@ def menu_registrar_venta():
         print("Error:", gestor.ultimo_error)
 
 
-def menu_cotizar():
+def menu_cotizar() -> None:
     """Opción 3: muestra el total estimado de una compra."""
     codigo = input("Codigo del producto: ")
     cantidad = int(pedir_numero("Cantidad: "))
@@ -64,13 +66,13 @@ def menu_cotizar():
         print("Error:", gestor.ultimo_error)
 
 
-def menu_mas_vendidos():
+def menu_mas_vendidos() -> None:
     """Opción 6: imprime los productos más vendidos."""
     for codigo, unidades in reportes.mas_vendidos():
         print(codigo, "->", unidades, "unidades")
 
 
-def menu_alertas_stock():
+def menu_alertas_stock() -> None:
     """Opción 7: imprime los productos con stock bajo."""
     productos_bajos = reportes.productos_stock_bajo()
     if len(productos_bajos) == 0:
@@ -83,7 +85,8 @@ def menu_alertas_stock():
         )
 
 
-ACCIONES = {
+# Las opciones 4 y 5 regresan el texto del reporte; aquí se ignora.
+ACCIONES: dict[str, Callable[[], object]] = {
     "1": menu_agregar_producto,
     "2": menu_registrar_venta,
     "3": menu_cotizar,
@@ -94,7 +97,7 @@ ACCIONES = {
 }
 
 
-def menu():
+def menu() -> None:
     """Ciclo principal: carga los datos, muestra el menú y ejecuta opciones."""
     print("Bienvenido al gestor de la tienda La Esquina")
     if almacen.existe_archivo(ARCHIVO):

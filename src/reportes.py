@@ -3,24 +3,24 @@
 import gestor
 
 
-def formatear_moneda(monto):
+def formatear_moneda(monto: float) -> str:
     """Da formato de dinero a un número: $ y redondeo a 2 decimales."""
     return "$" + str(round(monto, 2))
 
 
-def productos_stock_bajo():
+def productos_stock_bajo() -> list[gestor.Producto]:
     """Regresa la lista de productos con stock por debajo del minimo."""
-    productos_bajos = []
+    productos_bajos: list[gestor.Producto] = []
     for codigo in gestor.INVENTARIO:
         if gestor.INVENTARIO[codigo]["stock"] < gestor.STOCK_MINIMO:
             productos_bajos.append(gestor.INVENTARIO[codigo])
     return productos_bajos
 
 
-def reporte_inventario():
+def reporte_inventario() -> str:
     """Arma el reporte del inventario, lo imprime y lo regresa como texto."""
     reporte = "===== INVENTARIO =====\n"
-    valor_total = 0
+    valor_total: float = 0
     for codigo in gestor.INVENTARIO:
         producto = gestor.INVENTARIO[codigo]
         linea = producto["codigo"] + " | " + producto["nombre"] + " | "
@@ -35,24 +35,24 @@ def reporte_inventario():
     return reporte
 
 
-def total_vendido():
+def total_vendido() -> float:
     """Suma el total (con IVA) de todas las ventas registradas."""
-    total = 0
+    total: float = 0
     for venta in gestor.VENTAS:
         total = total + venta["total"]
     return round(total, 2)
 
 
-def mas_vendidos(n=3):
+def mas_vendidos(n: int = 3) -> list[tuple[str, int]]:
     """Regresa los n productos mas vendidos como lista de (codigo, unidades)."""
-    unidades_por_codigo = {}
+    unidades_por_codigo: dict[str, int] = {}
     for venta in gestor.VENTAS:
         codigo = venta["codigo"]
         if codigo in unidades_por_codigo:
             unidades_por_codigo[codigo] += venta["cantidad"]
         else:
             unidades_por_codigo[codigo] = venta["cantidad"]
-    ranking = []
+    ranking: list[tuple[str, int]] = []
     for codigo in unidades_por_codigo:
         ranking.append((codigo, unidades_por_codigo[codigo]))
     # ordenamiento de burbuja (TODO: algun dia usar sorted)
@@ -65,10 +65,10 @@ def mas_vendidos(n=3):
     return ranking[0:n]
 
 
-def resumen_ventas():
+def resumen_ventas() -> str:
     """Arma el resumen de ventas del dia, lo imprime y lo regresa."""
     resumen = "===== RESUMEN DE VENTAS =====\n"
-    total_dia = 0
+    total_dia: float = 0
     for venta in gestor.VENTAS:
         resumen = resumen + "Folio " + str(venta["folio"]) + ": " + venta["nombre"]
         resumen += " x" + str(venta["cantidad"]) + " = "

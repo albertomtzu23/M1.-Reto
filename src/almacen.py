@@ -6,9 +6,9 @@ import os
 import gestor
 
 
-def guardar_datos(ruta):
+def guardar_datos(ruta: str) -> bool:
     """Guarda el inventario, las ventas y el folio actual en un JSON."""
-    datos = {}
+    datos: dict[str, object] = {}
     datos["inventario"] = gestor.INVENTARIO
     datos["ventas"] = gestor.VENTAS
     datos["contador"] = gestor.contador_ventas
@@ -17,7 +17,7 @@ def guardar_datos(ruta):
     return True
 
 
-def _estructura_valida(datos):
+def _estructura_valida(datos: object) -> bool:
     """Indica si el JSON leído tiene la forma que guarda `guardar_datos`."""
     return (
         isinstance(datos, dict)
@@ -26,7 +26,7 @@ def _estructura_valida(datos):
     )
 
 
-def cargar_datos(ruta):
+def cargar_datos(ruta: str) -> bool:
     """Lee el archivo JSON y deja los datos en el estado global.
 
     Regresa False si el archivo no existe, está corrupto o no tiene la
@@ -57,6 +57,6 @@ def cargar_datos(ruta):
     return True
 
 
-def existe_archivo(ruta):
+def existe_archivo(ruta: str) -> bool:
     """Indica si ya existe el archivo de datos."""
     return os.path.exists(ruta)
