@@ -99,6 +99,7 @@ Found 20 errors.
 | 5 | Renombrar | Nombres descriptivos en snake_case en los 4 módulos; `MODO_DEBUG` eliminado; comentarios → docstrings; imports ordenados | 20/20 ✅ | 7 → 4 |
 | 6 | Manejo de errores | `with open` en lectura y escritura; `except Exception` → `except (ValueError, RecursionError)` | 20/20 ✅ | 4 → 1 |
 | C1 | Corrección de bug (cambio intencional) | `cargar_datos` valida la estructura antes de modificar el estado; 5 pruebas nuevas en `tests/test_casos_limite.py` | 25/25 ✅ | 1 → 1 |
+| 7 | Dividir función gigante | `menu()` → 5 funciones `menu_*` + diccionario `ACCIONES`; complejidad 17 → < 10 | 25/25 ✅ | 1 → **0** |
 
 ---
 
@@ -919,6 +920,118 @@ este arreglo hubiera ido dentro de la refactorización 6, el commit diría
 `CLAUDE.md` ("reporta y pregunta") convirtió a la IA de un asistente que
 "arregla lo que ve" en uno que me deja decidir, y que una prueba de regresión
 solo vale si se demuestra que falla con el código viejo.
+
+---
+
+### Refactorización 7 · Dividir `menu()` con un diccionario de despacho
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo (`¿Te armo el prompt? si`,
+en el mismo mensaje en que pedí corregir el bug). En el prototipo la IA había
+nombrado las funciones `registrar_venta` y `cotizar` dentro de `main.py`:
+funcionaba, pero se confundían con las de `gestor`. El prompt fija el prefijo
+`menu_` y explica por qué. Técnicas: (a) **convertir un tropiezo anterior en
+regla**: "antes de comparar, confirma que la sesión pasó por todas las
+opciones" sale directo del error de la refactorización 5; (b) describir la
+**forma final** de `menu()` paso a paso; (c) dejar explícito el caso especial
+(la opción 8 es la única que termina el ciclo). Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Refactorización 7 — Dividir `menu()` en una función por opción con un
+diccionario de despacho.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 25 tests pasando (20 originales + 5 de casos límite)
+y 1 error de ruff (C901: `menu` tiene complejidad 17).
+
+Problema: `menu()` es una cadena de 8 `if/elif` que mezcla el ciclo del
+menú con la lógica de cada opción. Para agregar una opción hay que
+meterse en medio de una función de 60 líneas.
+
+Objetivo: que `menu()` solo muestre el menú, lea la opción y la despache,
+y que cada opción viva en su propia función, SIN cambiar lo que ve el
+usuario.
+
+Alcance (solo esto, en main.py):
+1. Una función por opción con prefijo `menu_` para que no se confundan
+   con las de gestor: `menu_agregar_producto`, `menu_registrar_venta`,
+   `menu_cotizar`, `menu_mas_vendidos`, `menu_alertas_stock`.
+   Las opciones 4 y 5 llaman directo a `reportes.reporte_inventario` y
+   `reportes.resumen_ventas` (no necesitan función propia).
+2. Un diccionario `ACCIONES = {"1": menu_agregar_producto, ...}` y una
+   constante `OPCION_SALIR = "8"`. La opción 8 (guardar y salir) se
+   maneja aparte porque es la única que termina el ciclo.
+3. El texto del menú en una constante `TEXTO_MENU`.
+4. `menu()` queda como: bienvenida y carga de datos → ciclo que imprime
+   el menú, lee la opción, sale con la 8, ejecuta la acción o imprime
+   "Opcion no valida.".
+
+Restricciones:
+- La salida en consola debe ser idéntica carácter por carácter,
+  incluida la línea en blanco antes de cada menú y el orden de los
+  mensajes.
+- No cambies textos, prompts de `input()` ni mensajes de error.
+- No toques gestor.py, almacen.py ni reportes.py.
+- No modifiques tests/ ni pyproject.toml.
+
+Validación:
+- Ejecuta los tests y `ruff check src`.
+- Resultado esperado: 25 tests pasando y 0 errores de ruff
+  ("All checks passed!").
+- `main.py` no tiene tests: repite la sesión simulada del menú de la
+  refactorización 5 (las 8 opciones + una inválida, reintento por
+  número mal escrito, venta VIP, stock insuficiente, cotización,
+  reportes y guardado) con la versión anterior y la nueva, en una
+  copia temporal, y compara la salida de consola y el JSON guardado.
+  Antes de comparar, confirma que la sesión pasó por todas las opciones.
+  Debe ser idéntica.
+
+Al terminar:
+1. Muéstrame el diff.
+2. Registra la entrada #7 en docs/bitacora.md: este prompt tal cual,
+   el cambio realizado, la justificación y el resultado de tests y ruff.
+3. Haz un commit `refactor: divide menu() en funciones por opción con despacho por diccionario`
+   y súbelo a GitHub.
+```
+
+**Cambio realizado** (`src/main.py`, +84 / −54 líneas):
+
+| Elemento | Qué es |
+|---|---|
+| `TEXTO_MENU` | Constante con el texto del menú (empieza con `\n` para conservar la línea en blanco) |
+| `menu_agregar_producto`, `menu_registrar_venta`, `menu_cotizar`, `menu_mas_vendidos`, `menu_alertas_stock` | Una función por opción, con docstring |
+| `ACCIONES` | Diccionario `opción → función`; las opciones 4 y 5 apuntan directo a `reportes` |
+| `OPCION_SALIR = "8"` | Caso especial: guarda y rompe el ciclo |
+| `menu()` | Bienvenida y carga → ciclo: imprime, lee, sale con 8, despacha o "Opcion no valida." (de ~60 a 17 líneas) |
+
+`menu_alertas_stock` usa un `return` temprano cuando no hay productos con
+stock bajo (en lugar de `if/else`), siguiendo el estilo de la refactorización 4.
+
+**Justificación.**
+- **Separación de responsabilidades**: `menu()` ahora solo controla el ciclo;
+  la lógica de cada opción vive aparte y se puede leer (y probar) sola.
+- **Abierto a extensión**: agregar una opción es escribir una función y una
+  línea en `ACCIONES`; antes había que insertar un `elif` en medio de una
+  función de 60 líneas.
+- **Complejidad**: `menu()` pasó de 17 a menos de 10; era la última
+  violación de C901 del proyecto.
+
+**Verificación.**
+
+| Comprobación | Resultado |
+|---|---|
+| Tests | **25 passed** |
+| `ruff check src` | 1 → **0 errores — "All checks passed!"** ✅ |
+| Cobertura de la sesión simulada (confirmada **antes** de comparar) | Producto agregado, reintento por número inválido, 2 tickets (uno con descuento VIP), stock insuficiente, cotización, producto inexistente, reporte de inventario, resumen de ventas, más vendidos, 3 alertas de stock, opción inválida y guardado: **todas presentes** |
+| Salida de consola, versión anterior vs. nueva | **Idéntica** (154 líneas) |
+| JSON guardado por la opción 8 | **Idéntico** |
+
+**Qué aprendí.** Los nombres importan también *entre* módulos: dos
+funciones `registrar_venta` (una en `gestor`, otra en `main`) son legales en
+Python pero confunden a quien lee. Y una lección de la refactorización 5
+("verifica que la prueba ejecutó lo que querías") ya no fue un tropiezo,
+sino un paso del prompt: así se acumula el aprendizaje en el proceso.
 
 ---
 
