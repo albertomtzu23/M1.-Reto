@@ -97,6 +97,7 @@ Found 20 errors.
 | 3 | Extraer funciones | `registrar_venta` dividida en 4 funciones; `cotizar` reutiliza `calcular_descuento_volumen` | 20/20 ✅ | 13 → 11 |
 | 4 | Simplificar condicionales | Cláusulas de guarda en `_validar_venta` y `calcular_descuento_vip`; `hayArchivo` regresa la condición | 20/20 ✅ | 11 → 7 |
 | 5 | Renombrar | Nombres descriptivos en snake_case en los 4 módulos; `MODO_DEBUG` eliminado; comentarios → docstrings; imports ordenados | 20/20 ✅ | 7 → 4 |
+| 6 | Manejo de errores | `with open` en lectura y escritura; `except Exception` → `except (ValueError, RecursionError)` | 20/20 ✅ | 4 → 1 |
 
 ---
 
@@ -712,6 +713,147 @@ largas). También quedó claro que hay nombres que **no** son míos para
 cambiar: los que forman parte de un contrato (tests, claves del JSON). El
 prompt tuvo que separar explícitamente "nombres internos" de "formato de
 datos".
+
+---
+
+### Refactorización 6 · Manejo de errores con `with` y excepciones específicas
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo
+(`¿Te armo el prompt de la refactorización 6? si`). En el prototipo la IA
+**comprobó con datos una trampa** antes de escribir el prompt: cambiar
+`except Exception` por solo `except json.JSONDecodeError` hace que un archivo con
+bytes no UTF-8 truene en lugar de reportarse como corrupto (1 diferencia contra
+el original). Técnicas nuevas: (a) **pedir que la IA enumere las excepciones
+posibles antes de elegirlas** (razonar primero, codificar después);
+(b) **validar con entradas hostiles** (archivos rotos, vacíos, con BOM, un
+directorio…); (c) aplicar explícitamente la **regla 5 de `CLAUDE.md`**: los
+errores de comportamiento existentes se reportan y se preguntan, no se corrigen
+por iniciativa propia. Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Refactorización 6 — Mejorar el manejo de errores en la persistencia.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 20 tests pasando y 4 errores de ruff.
+
+Problema: en almacen.py los archivos se abren sin `with` (si algo falla
+entre `open` y `close`, el archivo queda abierto) y `cargar_datos` usa
+`except Exception`, que atrapa cualquier error, incluso bugs del propio
+código, y los reporta como "archivo corrupto".
+
+Objetivo: que los archivos siempre se cierren y que solo se atrapen los
+errores que de verdad significan "archivo corrupto", SIN cambiar el
+comportamiento.
+
+Alcance (solo esto, en almacen.py):
+1. `guardar_datos`: usa `with open(...) as archivo`.
+2. `cargar_datos`: usa `with open(...)` dentro del `try`, quita el modo
+   "r" redundante (regla UP015) y reemplaza `except Exception` por las
+   excepciones específicas que puede lanzar la lectura de un JSON.
+
+Restricciones:
+- Antes de elegir las excepciones, enumera qué puede lanzar
+  `json.load` sobre un archivo de texto con encoding utf-8. Ojo:
+  `json.JSONDecodeError` NO cubre un archivo con bytes que no son
+  UTF-8 válido (eso lanza `UnicodeDecodeError`). Un archivo así hoy
+  regresa False con "archivo corrupto" y debe seguir igual.
+- Conserva la verificación de "el archivo no existe" y sus mensajes.
+- NO corrijas otros problemas que encuentres: si detectas un error de
+  comportamiento existente, repórtalo en la bitácora como hallazgo y
+  pregúntame antes de cambiarlo (regla 5 de CLAUDE.md).
+- No toques gestor.py, reportes.py ni main.py.
+- No modifiques tests/ ni pyproject.toml.
+
+Validación:
+- Ejecuta los tests y `ruff check src`.
+- Resultado esperado: 20 tests pasando y 1 error de ruff
+  (desaparecen 2 SIM115 y UP015; queda solo el C901 de `menu`).
+- Busca `except Exception` en src/: no debe quedar ninguno.
+- Compara antes/después cargando estos archivos: JSON válido, sin
+  "contador", JSON roto, vacío, solo espacios, bytes UTF-8 inválidos,
+  con BOM, una lista `[]`, un objeto sin "inventario", un archivo
+  inexistente y un directorio. Revisa el valor de retorno, la excepción
+  (si la hay), `ultimo_error`, el inventario y el contador. Compara
+  también el JSON que escribe `guardar_datos` con acentos y ñ.
+  Debe dar 0 diferencias.
+
+Al terminar:
+1. Muéstrame el diff.
+2. Registra la entrada #6 en docs/bitacora.md: este prompt tal cual,
+   el cambio realizado, la justificación, el resultado de tests y ruff,
+   y los hallazgos.
+3. Haz un commit `refactor: manejo de errores con with y excepciones específicas`
+   y súbelo a GitHub.
+```
+
+**La enumeración pedida encontró dos casos que ni el prompt ni el prototipo
+anticipaban.** Al ejecutar `json.load` sobre distintas entradas:
+
+| Entrada | Excepción | ¿La cubre `JSONDecodeError`? |
+|---|---|---|
+| JSON mal formado | `JSONDecodeError` (subclase de `ValueError`) | Sí |
+| Bytes que no son UTF-8 | `UnicodeDecodeError` (subclase de `ValueError`) | No — *anticipado en el prompt* |
+| Entero con miles de dígitos | `ValueError` (límite de dígitos de Python 3.11+) | **No — nuevo** |
+| Anidamiento extremo `[[[[…]]]]` | `RecursionError` | **No — nuevo** |
+
+Con la versión del prototipo (`JSONDecodeError, UnicodeDecodeError`), el JSON
+anidado **tronaba** con `RecursionError` en lugar de regresar "archivo
+corrupto" como el original. Se corrigió a `except (ValueError, RecursionError)`
+con un comentario que explica qué cubre cada una.
+
+**Cambio realizado** (`src/almacen.py`):
+
+| Función | Antes | Después |
+|---|---|---|
+| `guardar_datos` | `open` … `close()` manual | `with open(...) as archivo:` |
+| `cargar_datos` | `open(ruta, "r", …)` fuera del `try`, `except Exception`, dos `close()` | `with open(ruta, …)` dentro del `try`, `except (ValueError, RecursionError)` con comentario |
+
+**Justificación.**
+- `with` garantiza que el archivo se cierre aunque ocurra una excepción; antes,
+  un error dentro de `json.dump` dejaba el archivo abierto (y en Windows,
+  bloqueado).
+- `except Exception` escondía **cualquier** error —incluido un bug del
+  propio programa— bajo el mensaje "archivo corrupto", lo que hace muy
+  difícil diagnosticar. Ahora solo se atrapan los errores que realmente
+  significan "el contenido no es un JSON válido".
+- Se eliminó código repetido (`close()` en dos ramas).
+
+**Resultado.**
+
+| | Antes | Después |
+|---|---|---|
+| Tests | 20 passed | **20 passed** |
+| `ruff check src` | 4 errores | **1 error** (−2 SIM115, −UP015; solo queda C901 de `menu`) |
+| `except Exception` en `src/` | 1 | **0** |
+| Persistencia: 15 escenarios (válido, sin contador, JSON roto, vacío, espacios, UTF-8 inválido, BOM, `[]`, sin "inventario", anidamiento extremo, entero enorme, inexistente, directorio, guardado con acentos y ñ) | — | **0 diferencias** |
+| Ventas (926), errores (53), reportes/JSON (23) | — | **0 diferencias** |
+
+**Hallazgos (reportados, no corregidos — regla 5 de `CLAUDE.md`).**
+
+1. **Pérdida de datos en memoria con un JSON válido pero mal estructurado.**
+   Si el archivo es un JSON válido sin la clave `"inventario"` (o es una lista
+   `[]`), `cargar_datos` **primero vacía el inventario y después truena**
+   (`KeyError` / `TypeError`). El inventario que había en memoria se pierde. Es
+   un bug del código original que se conserva idéntico.
+   *Decisión pendiente:* corregirlo en un cambio aparte, documentado como
+   cambio de comportamiento intencional (validar la estructura antes de
+   vaciar y regresar `False` con un mensaje).
+2. **Diferencia deliberada (no observable en la práctica).** El `open` ahora
+   está dentro del `try`, pero los errores del sistema operativo (`OSError`:
+   permisos, directorio) siguen sin atraparse, igual que antes. La única
+   diferencia teórica: un error de E/S *durante* la lectura (disco que falla a
+   media lectura) antes se reportaba como "archivo corrupto" y ahora se
+   propaga. Es justo el objetivo del cambio: no disfrazar fallas del sistema
+   como "archivo corrupto".
+
+**Qué aprendí.** La mejor instrucción del prompt fue "enumera antes de
+elegir": encontró dos casos que ni yo ni la IA habíamos previsto al
+diseñarlo. Un prompt detallado no garantiza que esté completo; pedirle a la IA
+que **investigue** antes de actuar cubre lo que el prompt no anticipó. También
+se vio el valor de la regla 5 de `CLAUDE.md`: la IA encontró un bug real y lo
+reportó en lugar de "arreglarlo" silenciosamente dentro de una refactorización.
 
 ---
 
