@@ -94,7 +94,7 @@ Found 20 errors.
 |---|---|---|---|---|
 | 1 | Eliminar código muerto | Se quitaron 2 funciones sin uso, 1 bloque comentado, 1 import sin usar y 4 declaraciones de encoding | 20/20 ✅ | 20 → 13 |
 | 2 | Constantes con nombre | 9 constantes de negocio en `gestor.py`; 17 literales reemplazados en `gestor.py` y `reportes.py` | 20/20 ✅ | 13 → 13 |
-| 3 | | | | |
+| 3 | Extraer funciones | `registrar_venta` dividida en 4 funciones; `cotizar` reutiliza `calcular_descuento_volumen` | 20/20 ✅ | 13 → 11 |
 | 4 | | | | |
 | 5 | | | | |
 
@@ -314,6 +314,136 @@ prompt 1 no incluyó porque su alcance era una lista cerrada. Queda anotado para
 la refactorización de nombres/estado global. Aprendizaje: un alcance cerrado
 evita cambios de más, pero conviene pedir también "reporta otros casos que
 encuentres, sin tocarlos".
+
+---
+
+### Refactorización 3 · Extraer funciones de `registrar_venta`
+
+**Cómo se diseñó el prompt.** Pedí a la IA armarlo (`¿Te armo el prompt? Si`).
+Antes de proponerlo, **la IA hizo un prototipo en una copia aparte** para que el
+resultado esperado del prompt fuera exacto (11 errores de ruff, 0 diferencias)
+en vez de una estimación. Técnicas nuevas respecto a los prompts 1 y 2:
+(a) **empezar por el problema** (5 responsabilidades, complejidad 12) y no solo
+por la instrucción; (b) **diseñar de antemano** nombre, entradas y salida de
+cada función nueva, que es donde más se equivoca la IA al extraer;
+(c) **pedir justificación antes de actuar** en un punto dudoso
+(`desc > 0` vs. valor redondeado); (d) **delimitar** qué corresponde a las
+refactorizaciones 4 y 5 para que no se mezclen. Lo envié sin cambios.
+
+**Prompt usado (tal cual):**
+
+```text
+Refactorización 3 — Extraer funciones de `registrar_venta` y eliminar
+la duplicación con `cotizar`.
+
+Contexto: sigue las reglas de CLAUDE.md. Rama `refactorizacion`.
+Estado actual: 20 tests pasando y 13 errores de ruff.
+
+Problema: `registrar_venta` hace 5 cosas (validar, calcular descuentos,
+calcular impuestos, actualizar inventario y armar el ticket) y tiene
+complejidad 12. Además, el cálculo de descuento por volumen está
+duplicado en `cotizar`.
+
+Objetivo: dividir `registrar_venta` en funciones con una sola
+responsabilidad, SIN cambiar el comportamiento.
+
+Alcance (solo esto, todo en gestor.py):
+1. `calcular_descuento_volumen(subtotal)`: regresa el descuento por
+   volumen. Úsala en `registrar_venta` Y en `cotizar`.
+   Debe regresar `0` (entero) cuando no hay descuento, igual que hoy:
+   el valor se guarda en el JSON y `0` vs `0.0` sería un cambio visible.
+2. `calcular_descuento_vip(cliente, subtotal, descuento)`: regresa el
+   descuento extra VIP o 0. En `registrar_venta` se suma así:
+   `desc = desc + calcular_descuento_vip(...)` (mismo orden de la suma).
+3. `_validar_venta(codigo, cantidad)`: regresa el producto o None, y deja
+   el mensaje en `ultimo_error`. Conserva el orden de las validaciones.
+4. `_armar_ticket(venta)`: recibe el dict de la venta y regresa el texto
+   del ticket, idéntico carácter por carácter.
+
+Restricciones:
+- MUEVE los `if` anidados tal cual a las nuevas funciones: aplanarlos es
+  la refactorización 4. No renombres variables (`aux`, `desc`, `temp2`):
+  eso es la refactorización 5.
+- No cambies firmas ni valores de retorno de funciones públicas.
+- No reordenes operaciones aritméticas.
+- El ticket hoy decide si imprime la línea de descuento con `desc > 0`
+  (valor sin redondear). Si en `_armar_ticket` usas
+  `venta["descuento"] > 0` (valor redondeado), explica por qué es
+  equivalente o no lo hagas.
+- No modifiques tests/ ni pyproject.toml.
+
+Validación:
+- Ejecuta los tests y `ruff check src`.
+- Resultado esperado: 20 tests pasando y 11 errores de ruff
+  (desaparecen C901 de `registrar_venta` y SIM108; los 3 SIM102
+  se quedan porque los `if` se movieron sin aplanar).
+- Repite la comparación antes/después de la refactorización 2 (casos
+  límite de precio, cantidad y cliente, incluyendo el ticket completo):
+  debe dar 0 diferencias.
+
+Al terminar:
+1. Muéstrame el diff.
+2. Registra la entrada #3 en docs/bitacora.md: este prompt tal cual,
+   el cambio realizado, la justificación y el resultado de tests y ruff.
+3. Haz un commit `refactor: extrae funciones de registrar_venta y elimina duplicación con cotizar`
+   y súbelo a GitHub.
+```
+
+**Cambio realizado** (`src/gestor.py`, +52 / −45 líneas):
+
+| Función nueva | Responsabilidad | Usada por |
+|---|---|---|
+| `calcular_descuento_volumen(subtotal)` | Descuento por volumen (10 % / 5 % / 0) | `registrar_venta` **y** `cotizar` |
+| `calcular_descuento_vip(cliente, subtotal, descuento)` | Extra VIP o 0 | `registrar_venta` |
+| `_validar_venta(codigo, cantidad)` | Validaciones y mensaje en `ultimo_error` | `registrar_venta` |
+| `_armar_ticket(venta)` | Texto del ticket | `registrar_venta` |
+
+`registrar_venta` quedó como un orquestador de ~25 líneas que se lee de arriba
+abajo: validar → calcular → descontar stock → registrar → ticket. `cotizar` ya no
+duplica la lógica de descuentos.
+
+**Justificación.**
+- **Una responsabilidad por función**: cada regla se puede leer, probar y
+  cambiar por separado (p. ej. cambiar el formato del ticket ya no implica
+  tocar la función que mueve inventario).
+- **Se elimina la duplicación**: antes, cambiar un umbral de descuento exigía
+  editar `registrar_venta` y `cotizar` y acordarse de ambas; ahora es un solo
+  lugar, y la cotización no puede desalinearse de la venta.
+- **Complejidad**: `registrar_venta` bajó de 12 a menos de 10 (ya no aparece en C901).
+
+**Respuesta al punto dudoso (`desc > 0` vs. `venta["descuento"] > 0`).**
+La IA usó el valor redondeado y lo justificó: el descuento solo puede valer
+`0` o un monto ≥ 4. El de volumen exige subtotal ≥ 500 (→ ≥ 25) y el VIP exige
+que `subtotal − descuento > 200` (→ extra > 4). Redondear a 2 decimales solo
+convertiría en 0 un valor menor a 0.005, que no puede ocurrir. Además, la
+comparación antes/después incluye el ticket completo y dio 0 diferencias.
+
+**Decisiones que hay que transparentar.**
+- `calcular_descuento_volumen` **no** se movió "tal cual": se escribió con
+  `return` tempranos en lugar del `if / else: if / else` original. Es la única
+  forma de que desaparezca SIM108, cosa que el propio prompt esperaba, así que
+  el prompt tenía una pequeña contradicción interna. Los `if` anidados de
+  validación y VIP sí se movieron sin tocar (siguen los 3 SIM102).
+- **Corrección hecha al revisar el diff**: al extraer la regla VIP se perdía el
+  comentario que explicaba la condición ("solo si su compra, ya con descuento,
+  pasa de cierto monto"). Se pasó esa información al docstring de
+  `calcular_descuento_vip` para no perder conocimiento del negocio.
+
+**Resultado.**
+
+| | Antes | Después |
+|---|---|---|
+| Tests | 20 passed | **20 passed** |
+| `ruff check src` | 13 errores | **11 errores** (−C901 `registrar_venta`, −SIM108) |
+| Equivalencia antes/después (926 casos, incluye ticket) | — | **0 diferencias** |
+| Funciones con lógica de descuento por volumen | 2 copias | **1** |
+
+**Qué aprendí.** Que la IA prototipara antes de escribir el prompt hizo que
+el resultado esperado fuera un dato y no una suposición. Revisar el diff me
+mostró algo que ninguna prueba detecta: al extraer funciones se pierden
+comentarios con conocimiento del negocio. Y un prompt muy detallado puede
+contradecirse ("mueve tal cual" + "desaparece SIM108"): conviene releerlo
+buscando instrucciones que choquen.
 
 ---
 
